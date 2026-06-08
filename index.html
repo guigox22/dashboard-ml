@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard Vendas · Mercado Livre</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" defer></script>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ═══════════════════════════════ SIDEBAR ════════════════════════════════ -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🛒</div>
+      <div>
+        <div class="logo-text">ML Painel</div>
+        <div class="logo-sub">Mercado Livre</div>
+      </div>
+    </div>
+
+    <div class="nav-section">Principal</div>
+    <div class="nav-item active" data-page="visao">
+      <span class="nav-icon">◈</span> Visão Geral
+    </div>
+    <div class="nav-item" data-page="mensal">
+      <span class="nav-icon">▦</span> Vendas Mensais
+    </div>
+    <div class="nav-item" data-page="metas">
+      <span class="nav-icon">◎</span> Metas
+    </div>
+
+    <div class="nav-section">Análise</div>
+    <div class="nav-item" data-page="margem">
+      <span class="nav-icon">↗</span> Margem
+    </div>
+    <div class="nav-item" data-page="quinzena">
+      <span class="nav-icon">⊟</span> Quinzenas
+    </div>
+
+    <div class="sidebar-footer">
+      <button class="sync-btn" id="syncBtn">↻ Sincronizar</button>
+      <div class="sync-time" id="syncTime">—</div>
+    </div>
+  </nav>
+
+  <!-- ═══════════════════════════════ MAIN ══════════════════════════════════ -->
+  <div class="main">
+
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div>
+        <div class="topbar-title" id="pageTitle">Visão Geral</div>
+        <div class="topbar-sub">Marketplace · Dados ao vivo do Google Sheets</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <div class="status">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Carregando...</span>
+        </div>
+        <div id="userBadge" style="display:flex;align-items:center;gap:8px;padding:5px 12px;background:#161b27;border:1px solid rgba(255,255,255,0.08);border-radius:20px;font-size:12px;color:#94a3b8;cursor:default">
+          <span id="userInitial" style="width:20px;height:20px;border-radius:50%;background:#FFE600;color:#0d1117;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">?</span>
+          <span id="userEmailTop">—</span>
+        </div>
+        <button id="btnLogout" style="background:none;border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#64748b;font-size:12px;font-family:'DM Sans',sans-serif;padding:6px 13px;cursor:pointer;transition:all .15s" onmouseover="this.style.color='#e2e8f0'" onmouseout="this.style.color='#64748b'">↩ Sair</button>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="content">
+
+      <!-- LOADING -->
+      <div class="loading" id="loadingState">
+        <div class="spinner"></div>
+        <div class="loading-text">Buscando dados do Google Sheets...</div>
+      </div>
+
+      <!-- DASHBOARD (hidden until data loads) -->
+      <div id="dashContent" style="display:none">
+
+        <!-- ══════════════ VISÃO GERAL ══════════════ -->
+        <div class="page active" id="page-visao">
+          <div class="kpi-grid">
+            <div class="kpi">
+              <div class="kpi-label">💰 Total vendas</div>
+              <div class="kpi-value" id="kpi-totalVendas">—</div>
+              <div class="kpi-sub">Acumulado 2025–2026</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">📈 Resultado total</div>
+              <div class="kpi-value" id="kpi-resultado">—</div>
+              <div class="kpi-sub kpi-up" id="kpi-margemGeral">Margem —</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">📦 Unidades totais</div>
+              <div class="kpi-value" id="kpi-qtd">—</div>
+              <div class="kpi-sub">Aparelhos vendidos</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">🏷 Ticket médio</div>
+              <div class="kpi-value" id="kpi-ticket">—</div>
+              <div class="kpi-sub">Média por unidade</div>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="card" style="margin-bottom:0">
+              <div class="card-title">Vendas vs Custos mensais</div>
+              <div class="legend">
+                <div class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span>Vendas</div>
+                <div class="legend-item"><span class="legend-dot" style="background:#ef4444"></span>Custos</div>
+              </div>
+              <div class="chart-wrap">
+                <canvas id="chartVC" role="img" aria-label="Gráfico de barras vendas e custos mensais">Vendas vs Custos.</canvas>
+              </div>
+            </div>
+            <div class="card" style="margin-bottom:0">
+              <div class="card-title">Resultado mensal (R$)</div>
+              <div class="legend">
+                <div class="legend-item"><span class="legend-dot" style="background:#22c55e"></span>Resultado líquido</div>
+              </div>
+              <div class="chart-wrap">
+                <canvas id="chartRes" role="img" aria-label="Gráfico de linha com resultado líquido mensal">Resultado mensal.</canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Resumo por ano</div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Ano</th><th>Total vendas</th><th>Total resultado</th><th>Margem média</th><th>Meses</th></tr>
+                </thead>
+                <tbody id="tabelaAnos"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══════════════ VENDAS MENSAIS ══════════════ -->
+        <div class="page" id="page-mensal">
+          <div class="kpi-grid">
+            <div class="kpi">
+              <div class="kpi-label">🏆 Melhor mês</div>
+              <div class="kpi-value" id="kpi-melhorMes">—</div>
+              <div class="kpi-sub kpi-up" id="kpi-melhorVal">—</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">📦 Maior volume</div>
+              <div class="kpi-value" id="kpi-maiorVol">—</div>
+              <div class="kpi-sub" id="kpi-maiorVolVal">—</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">📉 Menor mês</div>
+              <div class="kpi-value" id="kpi-menorMes">—</div>
+              <div class="kpi-sub kpi-down" id="kpi-menorVal">—</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">🔝 Maior margem</div>
+              <div class="kpi-value" id="kpi-maiorMargem">—</div>
+              <div class="kpi-sub kpi-up" id="kpi-maiorMargemVal">—</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Volume de vendas mensais (R$)</div>
+            <div class="legend">
+              <div class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span>2025</div>
+              <div class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span>2026</div>
+            </div>
+            <div class="chart-wrap tall">
+              <canvas id="chartMensal" role="img" aria-label="Volume de vendas por mês em reais">Vendas mensais.</canvas>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Tabela completa</div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Mês</th><th>Ano</th><th>Vendas</th><th>Custos</th>
+                    <th>Resultado</th><th>Qtd</th><th>Ticket médio</th><th>Margem</th>
+                  </tr>
+                </thead>
+                <tbody id="tabelaMensal"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══════════════ METAS ══════════════ -->
+        <div class="page" id="page-metas">
+          <div class="kpi-grid">
+            <div class="kpi">
+              <div class="kpi-label">🎯 Meta total</div>
+              <div class="kpi-value" id="kpi-metaTotal">—</div>
+              <div class="kpi-sub">Projetado 2025/2026</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">✅ Meses acima da meta</div>
+              <div class="kpi-value kpi-up" id="kpi-mesesAcima">—</div>
+              <div class="kpi-sub">De meses com dados</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">🥇 Melhor atingimento</div>
+              <div class="kpi-value" id="kpi-melhorMeta">—</div>
+              <div class="kpi-sub" id="kpi-melhorMetaMes">—</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">⚠ Pior atingimento</div>
+              <div class="kpi-value kpi-down" id="kpi-piorMeta">—</div>
+              <div class="kpi-sub" id="kpi-piorMetaMes">—</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">% da meta atingida por mês</div>
+            <div class="chart-wrap tall">
+              <canvas id="chartMetas" role="img" aria-label="Percentual da meta atingida por mês">Metas mensais.</canvas>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Detalhe das metas</div>
+            <div id="metasBars"></div>
+          </div>
+        </div>
+
+        <!-- ══════════════ MARGEM ══════════════ -->
+        <div class="page" id="page-margem">
+          <div class="kpi-grid">
+            <div class="kpi">
+              <div class="kpi-label">📊 Margem média 2025</div>
+              <div class="kpi-value" id="kpi-m2025">—</div>
+              <div class="kpi-sub">Ano completo</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">📊 Margem média 2026</div>
+              <div class="kpi-value" id="kpi-m2026">—</div>
+              <div class="kpi-sub">Parcial</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">🔝 Pico de margem</div>
+              <div class="kpi-value kpi-up" id="kpi-picoMargem">—</div>
+              <div class="kpi-sub" id="kpi-picoMargemMes">—</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">📉 Menor margem</div>
+              <div class="kpi-value kpi-down" id="kpi-minMargem">—</div>
+              <div class="kpi-sub" id="kpi-minMargemMes">—</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Evolução da margem % por mês</div>
+            <div class="legend">
+              <div class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span>Margem (%)</div>
+              <div class="legend-item"><span class="legend-dot" style="background:#f59e0b; opacity:.5"></span>Meta 40%</div>
+            </div>
+            <div class="chart-wrap tall">
+              <canvas id="chartMargem" role="img" aria-label="Evolução da margem percentual mensal">Margem mensal.</canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══════════════ QUINZENAS ══════════════ -->
+        <div class="page" id="page-quinzena">
+          <div class="card">
+            <div class="card-title">Vendas: 1ª vs 2ª quinzena (R$)</div>
+            <div class="legend">
+              <div class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span>1ª quinzena</div>
+              <div class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span>2ª quinzena</div>
+            </div>
+            <div class="chart-wrap tall">
+              <canvas id="chartQ" role="img" aria-label="Comparação de vendas por quinzena">Quinzenas.</canvas>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Detalhamento por mês</div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Mês</th><th>1ª Quinzena</th><th>2ª Quinzena</th><th>Total</th><th>Proporção 1ª Q</th></tr>
+                </thead>
+                <tbody id="tabelaQ"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /dashContent -->
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+  (function() {
+    var raw = sessionStorage.getItem("ml_user");
+    if (!raw) { window.location.href = "login.html"; return; }
+    var user = JSON.parse(raw);
+    var name = user.name || user.email || "?";
+    var disp = name.charAt(0).toUpperCase() + name.slice(1);
+    var initial = disp.charAt(0).toUpperCase();
+    var emailShort = user.email && user.email.length > 22
+      ? user.email.slice(0, 20) + "\u2026"
+      : (user.email || name);
+    document.addEventListener("DOMContentLoaded", function() {
+      var initEl  = document.getElementById("userInitial");
+      var emailEl = document.getElementById("userEmailTop");
+      if (initEl)  initEl.textContent  = initial;
+      if (emailEl) emailEl.textContent = emailShort;
+      var btn = document.getElementById("btnLogout");
+      if (btn) btn.addEventListener("click", function() {
+        sessionStorage.removeItem("ml_user");
+        window.location.href = "login.html";
+      });
+    });
+  })();
+</script>
+<script src="app.js"></script>
+</body>
+</html>

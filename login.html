@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login · ML Painel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d1117;
+      --bg2:       #161b27;
+      --bg3:       #1e2535;
+      --border:    rgba(255,255,255,0.08);
+      --border2:   rgba(255,255,255,0.15);
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --muted2:    #94a3b8;
+      --accent:    #FFE600;
+      --blue:      #3b82f6;
+      --red:       #ef4444;
+      --green:     #22c55e;
+      --radius:    12px;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── GRID ── */
+    .page {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    /* ── LEFT PANEL ── */
+    .left {
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 3rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .left::before {
+      content: '';
+      position: absolute;
+      top: -120px; left: -120px;
+      width: 420px; height: 420px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,230,0,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .left-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-badge {
+      width: 36px; height: 36px;
+      background: var(--accent);
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .logo-name { font-size: 15px; font-weight: 600; color: var(--text); }
+    .logo-tag  { font-size: 11px; color: var(--muted); }
+
+    .left-body { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 2rem 0; }
+
+    .left-title {
+      font-size: 32px;
+      font-weight: 600;
+      line-height: 1.2;
+      letter-spacing: -0.03em;
+      margin-bottom: 1rem;
+      color: var(--text);
+    }
+    .left-title span { color: var(--accent); }
+
+    .left-desc {
+      font-size: 14px;
+      color: var(--muted2);
+      line-height: 1.7;
+      max-width: 340px;
+      margin-bottom: 2.5rem;
+    }
+
+    .features { display: flex; flex-direction: column; gap: 12px; }
+    .feature {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--muted2);
+    }
+    .feature-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+    }
+
+    .left-footer { font-size: 11px; color: var(--muted); }
+
+    /* ── RIGHT PANEL ── */
+    .right {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+
+    .login-box {
+      width: 100%;
+      max-width: 380px;
+    }
+
+    .login-header { margin-bottom: 2rem; }
+    .login-title  { font-size: 22px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+    .login-sub    { font-size: 13px; color: var(--muted2); }
+
+    /* ── FORM ── */
+    .form-group { margin-bottom: 1.1rem; }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted2);
+      margin-bottom: 6px;
+      letter-spacing: 0.03em;
+    }
+
+    input[type="email"],
+    input[type="password"] {
+      width: 100%;
+      padding: 11px 14px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 14px;
+      font-family: 'DM Sans', sans-serif;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input[type="email"]:focus,
+    input[type="password"]:focus {
+      border-color: rgba(255,230,0,0.4);
+      box-shadow: 0 0 0 3px rgba(255,230,0,0.07);
+    }
+    input::placeholder { color: var(--muted); }
+
+    .password-wrap { position: relative; }
+    .toggle-pw {
+      position: absolute;
+      right: 12px; top: 50%;
+      transform: translateY(-50%);
+      background: none; border: none;
+      color: var(--muted); cursor: pointer;
+      font-size: 13px; padding: 4px;
+      font-family: 'DM Sans', sans-serif;
+      transition: color 0.15s;
+    }
+    .toggle-pw:hover { color: var(--muted2); }
+
+    .form-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+    }
+    .remember {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      color: var(--muted2);
+      cursor: pointer;
+    }
+    .remember input[type="checkbox"] {
+      width: 14px; height: 14px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .forgot {
+      font-size: 12px;
+      color: var(--muted2);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    .forgot:hover { color: var(--accent); }
+
+    .btn-login {
+      width: 100%;
+      padding: 12px;
+      background: var(--accent);
+      color: #0d1117;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 600;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      letter-spacing: 0.01em;
+    }
+    .btn-login:hover   { opacity: 0.88; }
+    .btn-login:active  { transform: scale(0.98); }
+    .btn-login:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .divider {
+      display: flex; align-items: center; gap: 10px;
+      margin: 1.25rem 0;
+      font-size: 11px; color: var(--muted);
+    }
+    .divider::before, .divider::after {
+      content: ''; flex: 1;
+      height: 1px; background: var(--border);
+    }
+
+    /* ── ERROR ── */
+    .error-msg {
+      display: none;
+      background: rgba(239,68,68,0.08);
+      border: 1px solid rgba(239,68,68,0.2);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #fca5a5;
+      margin-bottom: 1rem;
+      line-height: 1.5;
+    }
+    .error-msg.show { display: block; }
+
+    /* ── LOADING STATE ── */
+    .btn-login.loading {
+      pointer-events: none;
+      opacity: 0.7;
+    }
+    .spinner-inline {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(0,0,0,0.2);
+      border-top-color: #0d1117;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .demo-note {
+      margin-top: 1.5rem;
+      padding: 10px 14px;
+      background: rgba(255,230,0,0.05);
+      border: 1px solid rgba(255,230,0,0.12);
+      border-radius: 8px;
+      font-size: 11px;
+      color: var(--muted2);
+      line-height: 1.6;
+      text-align: center;
+    }
+    .demo-note strong { color: var(--accent); }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 700px) {
+      .page { grid-template-columns: 1fr; }
+      .left { display: none; }
+      .right { padding: 2rem 1.5rem; align-items: flex-start; padding-top: 3rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- LEFT -->
+  <div class="left">
+    <div class="left-logo">
+      <div class="logo-badge">🛒</div>
+      <div>
+        <div class="logo-name">ML Painel</div>
+        <div class="logo-tag">Mercado Livre · Analytics</div>
+      </div>
+    </div>
+
+    <div class="left-body">
+      <div class="left-title">
+        Dados de vendas<br>em tempo <span>real.</span>
+      </div>
+      <div class="left-desc">
+        Painel centralizado com todas as métricas do seu marketplace. Acompanhe vendas, metas, margens e muito mais em um só lugar.
+      </div>
+      <div class="features">
+        <div class="feature"><span class="feature-dot"></span>Sincronização automática com Google Sheets</div>
+        <div class="feature"><span class="feature-dot"></span>Análise de margem e resultado mensal</div>
+        <div class="feature"><span class="feature-dot"></span>Controle de metas e atingimento</div>
+        <div class="feature"><span class="feature-dot"></span>Comparativo de quinzenas</div>
+      </div>
+    </div>
+
+    <div class="left-footer">© 2026 ML Painel · Versão demo</div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="right">
+    <div class="login-box">
+
+      <div class="login-header">
+        <div class="login-title">Bem-vindo de volta</div>
+        <div class="login-sub">Entre com suas credenciais para acessar o painel</div>
+      </div>
+
+      <div class="error-msg" id="errorMsg">
+        ⚠ Preencha o e-mail e a senha para continuar.
+      </div>
+
+      <div class="form-group">
+        <label for="email">E-mail</label>
+        <input type="email" id="email" placeholder="seu@email.com" autocomplete="email" />
+      </div>
+
+      <div class="form-group">
+        <label for="password">Senha</label>
+        <div class="password-wrap">
+          <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" />
+          <button class="toggle-pw" type="button" id="togglePw" aria-label="Mostrar senha">👁</button>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label class="remember">
+          <input type="checkbox" id="remember" /> Lembrar acesso
+        </label>
+        <a href="#" class="forgot">Esqueci a senha</a>
+      </div>
+
+      <button class="btn-login" id="btnLogin" type="button">Entrar no painel</button>
+
+      <div class="demo-note">
+        <strong>Modo demonstração</strong> — qualquer e-mail e senha são aceitos nesta versão.
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const emailEl  = document.getElementById('email');
+  const pwEl     = document.getElementById('password');
+  const btnLogin = document.getElementById('btnLogin');
+  const errorMsg = document.getElementById('errorMsg');
+  const togglePw = document.getElementById('togglePw');
+
+  // Toggle senha visível
+  togglePw.addEventListener('click', () => {
+    const show = pwEl.type === 'password';
+    pwEl.type  = show ? 'text' : 'password';
+    togglePw.textContent = show ? '🙈' : '👁';
+  });
+
+  // Login
+  function doLogin() {
+    const email = emailEl.value.trim();
+    const pw    = pwEl.value.trim();
+
+    if (!email || !pw) {
+      errorMsg.textContent = '⚠ Preencha o e-mail e a senha para continuar.';
+      errorMsg.classList.add('show');
+      return;
+    }
+
+    // Valida formato básico de e-mail
+    if (!email.includes('@') || !email.includes('.')) {
+      errorMsg.textContent = '⚠ Informe um e-mail válido.';
+      errorMsg.classList.add('show');
+      return;
+    }
+
+    errorMsg.classList.remove('show');
+
+    // Loading state
+    btnLogin.classList.add('loading');
+    btnLogin.innerHTML = '<span class="spinner-inline"></span>Entrando...';
+
+    // Simula autenticação e salva sessão
+    setTimeout(() => {
+      const userData = { email, name: email.split('@')[0], loginAt: new Date().toISOString() };
+      sessionStorage.setItem('ml_user', JSON.stringify(userData));
+      window.location.href = 'welcome.html';
+    }, 1200);
+  }
+
+  btnLogin.addEventListener('click', doLogin);
+
+  // Enter para logar
+  [emailEl, pwEl].forEach(el => el.addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  }));
+
+  // Limpa erro ao digitar
+  [emailEl, pwEl].forEach(el => el.addEventListener('input', () => {
+    errorMsg.classList.remove('show');
+  }));
+
+  // Se já está logado, vai direto pro painel
+  if (sessionStorage.getItem('ml_user')) {
+    window.location.href = 'welcome.html';
+  }
+</script>
+</body>
+</html>
