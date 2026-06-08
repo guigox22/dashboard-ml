@@ -441,7 +441,7 @@ function buildDashboard() {
       labels,
       datasets: [
         { label: 'Margem %', data: dados.map(d => parseFloat((d.m * 100).toFixed(1))), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', fill: true, tension: 0.4, pointRadius: 3 },
-        { label: 'Meta 40%', data: dados.map(() => 40), borderColor: '#f59e0b', borderDash: [5, 5], pointRadius: 0, fill: false }
+        { label: 'Meta 30%', data: dados.map(() => 30), borderColor: '#f59e0b', borderDash: [5, 5], pointRadius: 0, fill: false }
       ]
     },
     options: {
