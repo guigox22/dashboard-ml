@@ -5,7 +5,9 @@
 // ── CONFIG ───────────────────────────────────────────────────────────────────
 const SHEET_ID       = '1OU-wXa3pfMTzPzRCdCtc3Jhzk08zpI_E';
 const GID_DASHBOARD  = '199181687';
+const GID_ESTOQUE    = '620201163';
 const CSV_URL        = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID_DASHBOARD}`;
+const CSV_ESTOQUE    = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID_ESTOQUE}`;
 
 // ── PAGE TITLES ───────────────────────────────────────────────────────────────
 const PAGE_TITLES = {
@@ -14,12 +16,14 @@ const PAGE_TITLES = {
   metas:    'Metas',
   margem:   'Análise de Margem',
   quinzena: 'Primeira vs Segunda Quinzena',
+  estoque:  'Estoque Antigo · Vendas com Prejuízo',
 };
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let dados      = [];
 let metas      = [];
 let quinzenas  = [];
+let estoqueAntigo = [];
 const charts   = {};
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
@@ -97,11 +101,16 @@ async function loadData() {
   statusDot.style.boxShadow  = '0 0 6px #f59e0b';
 
   try {
-    const resp = await fetch(CSV_URL + '&cachebust=' + Date.now());
+    const [resp, respEA] = await Promise.all([
+      fetch(CSV_URL     + '&cachebust=' + Date.now()),
+      fetch(CSV_ESTOQUE + '&cachebust=' + Date.now())
+    ]);
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const text = await resp.text();
+    const text   = await resp.text();
+    const textEA = respEA.ok ? await respEA.text() : '';
 
     processCSV(text);
+    if (textEA) processEstoqueCSV(textEA);
     buildDashboard();
 
     loadingEl.style.display    = 'none';
@@ -235,6 +244,142 @@ function useFallbackData() {
   ];
 }
 
+// ── PARSE ESTOQUE ANTIGO CSV ─────────────────────────────────────────────────
+function processEstoqueCSV(text) {
+  estoqueAntigo = [];
+  const lines = text.split('\n').map(parseCSVLine);
+
+  for (let i = 0; i < lines.length; i++) {
+    const r    = lines[i];
+    const colA = (r[0] || '').trim(); // Data
+    const colB = (r[1] || '').trim(); // ID venda
+    const colC = (r[2] || '').trim(); // Produto
+    const colD = (r[3] || '').trim(); // Vendido
+    const colE = (r[4] || '').trim(); // Custo Total
+    const colF = (r[5] || '').trim(); // Qtd
+
+    // Detecta linha de mês (MAIO, JUNHO, etc)
+    const meses = ['MAIO','JUNHO','JULHO','AGOSTO','SETEMBRO','OUTUBRO','NOVEMBRO','DEZEMBRO','JANEIRO','FEVEREIRO','MARÇO'];
+    if (meses.some(m => colC.toUpperCase() === m || colA.toUpperCase() === m)) continue;
+    if (!colC || colC === 'PRODUTO' || colC === '') continue;
+
+    const vendido = parseNum(colD);
+    const custo   = parseNum(colE);
+    const qtd     = parseNum(colF);
+
+    if (vendido != null && custo != null) {
+      // Extrai mês da data (ex: "26 mai 18:48 hs")
+      let mes = 'Desconhecido';
+      const mMap = {jan:'Jan',fev:'Fev',mar:'Mar',abr:'Abr',mai:'Mai',jun:'Jun',jul:'Jul',ago:'Ago',set:'Set',out:'Out',nov:'Nov',dez:'Dez'};
+      const mMatch = colA.toLowerCase().match(/(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)/);
+      if (mMatch) mes = mMap[mMatch[1]] || mMatch[1];
+
+      estoqueAntigo.push({
+        data:    colA,
+        produto: colC,
+        vendido,
+        custo,
+        qtd:     qtd || 1,
+        res:     vendido - custo,
+        mes
+      });
+    }
+  }
+}
+
+// ── BUILD ESTOQUE ANTIGO ──────────────────────────────────────────────────────
+function buildEstoque() {
+  if (!estoqueAntigo.length) return;
+
+  const gc = 'rgba(255,255,255,0.05)';
+  const tc = '#64748b';
+
+  const totalV   = estoqueAntigo.reduce((a, d) => a + d.vendido, 0);
+  const totalC   = estoqueAntigo.reduce((a, d) => a + d.custo,   0);
+  const totalR   = totalV - totalC;
+  const totalQ   = estoqueAntigo.reduce((a, d) => a + d.qtd,     0);
+  const markup   = totalC > 0 ? ((totalV - totalC) / totalC) * 100 : 0;
+  const margem   = totalV > 0 ? ((totalV - totalC) / totalV) * 100 : 0;
+
+  set('ea-totalVendido', fmtR(totalV));
+  set('ea-totalCusto',   fmtR(totalC));
+  set('ea-resultado',    fmtR(totalR));
+  set('ea-markup',       'Markup ' + markup.toFixed(1) + '% · Margem ' + margem.toFixed(1) + '%');
+  set('ea-qtd',          totalQ.toString());
+
+  // Agrupa por mês
+  const porMes = {};
+  estoqueAntigo.forEach(d => {
+    if (!porMes[d.mes]) porMes[d.mes] = { v: 0, c: 0, r: 0 };
+    porMes[d.mes].v += d.vendido;
+    porMes[d.mes].c += d.custo;
+    porMes[d.mes].r += d.res;
+  });
+  const mesLabels = Object.keys(porMes);
+  const mesV      = mesLabels.map(m => porMes[m].v);
+  const mesC      = mesLabels.map(m => porMes[m].c);
+  const mesR      = mesLabels.map(m => porMes[m].r);
+
+  // Chart vendido vs custo
+  mkChart('chartEA', {
+    type: 'bar',
+    data: {
+      labels: mesLabels,
+      datasets: [
+        { label: 'Vendido', data: mesV, backgroundColor: '#3b82f6', borderRadius: 3 },
+        { label: 'Custo',   data: mesC, backgroundColor: '#ef4444', borderRadius: 3 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: tc, font: { size: 10 } }, grid: { color: gc } },
+        y: { ticks: { color: tc, font: { size: 10 }, callback: v => 'R$' + (v/1000).toFixed(0) + 'k' }, grid: { color: gc } }
+      }
+    }
+  });
+
+  // Chart resultado (prejuízo)
+  mkChart('chartEARes', {
+    type: 'bar',
+    data: {
+      labels: mesLabels,
+      datasets: [{
+        label: 'Resultado',
+        data: mesR,
+        backgroundColor: mesR.map(v => v < 0 ? '#ef4444' : '#22c55e'),
+        borderRadius: 3
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: tc, font: { size: 10 } }, grid: { color: gc } },
+        y: { ticks: { color: tc, font: { size: 10 }, callback: v => 'R$' + (v/1000).toFixed(0) + 'k' }, grid: { color: gc } }
+      }
+    }
+  });
+
+  // Tabela produtos
+  const tb = document.getElementById('tabelaEA');
+  if (tb) {
+    tb.innerHTML = estoqueAntigo.map(d => {
+      const margPct = d.vendido > 0 ? ((d.res / d.vendido) * 100).toFixed(1) : 0;
+      const bc = d.res >= 0 ? 'badge-green' : 'badge-red';
+      return `<tr>
+        <td style="color:var(--muted2);font-size:11px">${d.data}</td>
+        <td>${d.produto}</td>
+        <td>${fmtR(d.vendido)}</td>
+        <td>${fmtR(d.custo)}</td>
+        <td>${fmtR(d.res)}</td>
+        <td><span class="badge ${bc}">${margPct}%</span></td>
+      </tr>`;
+    }).join('');
+  }
+}
+
 // ── BUILD DASHBOARD ───────────────────────────────────────────────────────────
 function buildDashboard() {
   if (!dados.length) return;
@@ -365,6 +510,9 @@ function buildDashboard() {
     }).join('');
   }
 
+  // ── Build Estoque Antigo
+  buildEstoque();
+
   // ═══════════════════════════════ CHARTS ═══════════════════════════════════
 
   // Vendas vs Custos
@@ -441,7 +589,7 @@ function buildDashboard() {
       labels,
       datasets: [
         { label: 'Margem %', data: dados.map(d => parseFloat((d.m * 100).toFixed(1))), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', fill: true, tension: 0.4, pointRadius: 3 },
-        { label: 'Meta 30%', data: dados.map(() => 30), borderColor: '#f59e0b', borderDash: [5, 5], pointRadius: 0, fill: false }
+        { label: 'Meta 40%', data: dados.map(() => 40), borderColor: '#f59e0b', borderDash: [5, 5], pointRadius: 0, fill: false }
       ]
     },
     options: {

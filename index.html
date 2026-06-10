@@ -4,10 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dashboard Vendas · Mercado Livre</title>
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="/dashboard-ml/favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="/dashboard-ml/favicon-16x16.png">
-  <link rel="manifest" href="/site.webmanifest">
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" defer></script>
 </head>
@@ -18,7 +14,7 @@
   <!-- ═══════════════════════════════ SIDEBAR ════════════════════════════════ -->
   <nav class="sidebar">
     <div class="sidebar-logo">
-      <img src="favicon-32x32.png" alt="Logo ML Painel" style="width:32px;height:32px;border-radius:8px;">
+      <div class="logo-icon">🛒</div>
       <div>
         <div class="logo-text">ML Painel</div>
         <div class="logo-sub">Mercado Livre</div>
@@ -42,6 +38,11 @@
     </div>
     <div class="nav-item" data-page="quinzena">
       <span class="nav-icon">⊟</span> Quinzenas
+    </div>
+
+    <div class="nav-section">Especial</div>
+    <div class="nav-item" data-page="estoque">
+      <span class="nav-icon">⚠</span> Estoque Antigo
     </div>
 
     <div class="sidebar-footer">
@@ -263,7 +264,7 @@
             <div class="card-title">Evolução da margem % por mês</div>
             <div class="legend">
               <div class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span>Margem (%)</div>
-              <div class="legend-item"><span class="legend-dot" style="background:#f59e0b; opacity:.5"></span>Meta 30%</div>
+              <div class="legend-item"><span class="legend-dot" style="background:#f59e0b; opacity:.5"></span>Meta 40%</div>
             </div>
             <div class="chart-wrap tall">
               <canvas id="chartMargem" role="img" aria-label="Evolução da margem percentual mensal">Margem mensal.</canvas>
@@ -296,6 +297,66 @@
           </div>
         </div>
 
+        <!-- ══════════════ ESTOQUE ANTIGO ══════════════ -->
+        <div class="page" id="page-estoque">
+          <div class="kpi-grid">
+            <div class="kpi">
+              <div class="kpi-label">📦 Total Vendido</div>
+              <div class="kpi-value" id="ea-totalVendido">—</div>
+              <div class="kpi-sub">Receita bruta</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">💸 Custo Total</div>
+              <div class="kpi-value kpi-down" id="ea-totalCusto">—</div>
+              <div class="kpi-sub">Valor pago pelos aparelhos</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">📉 Resultado</div>
+              <div class="kpi-value kpi-down" id="ea-resultado">—</div>
+              <div class="kpi-sub" id="ea-markup">Markup —</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">📱 Unidades</div>
+              <div class="kpi-value" id="ea-qtd">—</div>
+              <div class="kpi-sub">Aparelhos vendidos</div>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="card" style="margin-bottom:0">
+              <div class="card-title">Vendido vs Custo por mês</div>
+              <div class="legend">
+                <div class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span>Vendido</div>
+                <div class="legend-item"><span class="legend-dot" style="background:#ef4444"></span>Custo</div>
+              </div>
+              <div class="chart-wrap">
+                <canvas id="chartEA" role="img" aria-label="Vendido vs Custo estoque antigo">Vendido vs Custo.</canvas>
+              </div>
+            </div>
+            <div class="card" style="margin-bottom:0">
+              <div class="card-title">Prejuízo por mês (R$)</div>
+              <div class="legend">
+                <div class="legend-item"><span class="legend-dot" style="background:#ef4444"></span>Resultado negativo</div>
+              </div>
+              <div class="chart-wrap">
+                <canvas id="chartEARes" role="img" aria-label="Resultado negativo por mês estoque antigo">Resultado.</canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:12px">
+            <div class="card-title">Produtos vendidos</div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Data</th><th>Produto</th><th>Vendido</th><th>Custo</th><th>Resultado</th><th>Margem</th></tr>
+                </thead>
+                <tbody id="tabelaEA"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
       </div><!-- /dashContent -->
     </div><!-- /content -->
   </div><!-- /main -->
@@ -304,7 +365,7 @@
 <script>
   (function() {
     var raw = sessionStorage.getItem("ml_user");
-    if (!raw) { sessionStorage.setItem('ml_user', JSON.stringify({name:'demo', email:'demo@demo.com'})); }
+    if (!raw) { window.location.href = "login.html"; return; }
     var user = JSON.parse(raw);
     var name = user.name || user.email || "?";
     var disp = name.charAt(0).toUpperCase() + name.slice(1);
