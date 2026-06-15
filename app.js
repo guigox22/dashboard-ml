@@ -326,7 +326,7 @@ function buildEstoque() {
     data: {
       labels: mesLabels,
       datasets: [
-        { label: 'Vendido', data: mesV, backgroundColor: '#3b82f6', borderRadius: 3 },
+        { label: 'Vendido', data: mesV, backgroundColor: '#2ab5b5', borderRadius: 3 },
         { label: 'Custo',   data: mesC, backgroundColor: '#ef4444', borderRadius: 3 }
       ]
     },
@@ -385,8 +385,8 @@ function buildDashboard() {
   if (!dados.length) return;
 
   const labels = dados.map(d => d.mes.slice(0,3) + '/' + String(d.ano).slice(2));
-  const gc     = 'rgba(255,255,255,0.05)';
-  const tc     = '#64748b';
+  const gc     = 'rgba(0,0,0,0.06)';
+  const tc     = '#7a8a9a';
 
   const baseOpts = (yFmt) => ({
     responsive: true,
@@ -521,7 +521,7 @@ function buildDashboard() {
     data: {
       labels,
       datasets: [
-        { label: 'Vendas', data: dados.map(d => d.v), backgroundColor: '#3b82f6', borderRadius: 3 },
+        { label: 'Vendas', data: dados.map(d => d.v), backgroundColor: '#2ab5b5', borderRadius: 3 },
         { label: 'Custos', data: dados.map(d => d.c), backgroundColor: '#ef4444', borderRadius: 3 }
       ]
     },
@@ -536,9 +536,9 @@ function buildDashboard() {
       datasets: [{
         label: 'Resultado',
         data: dados.map(d => d.r),
-        borderColor: '#22c55e',
-        backgroundColor: 'rgba(34,197,94,0.08)',
-        fill: true, tension: 0.4, pointRadius: 3, pointBackgroundColor: '#22c55e'
+        borderColor: '#3cb878',
+        backgroundColor: 'rgba(60,184,120,0.10)',
+        fill: true, tension: 0.4, pointRadius: 3, pointBackgroundColor: '#3cb878'
       }]
     },
     options: baseOpts()
@@ -552,7 +552,7 @@ function buildDashboard() {
       datasets: [{
         label: 'Vendas',
         data: dados.map(d => d.v),
-        backgroundColor: dados.map(d => d.ano === 2025 ? '#3b82f6' : '#f59e0b'),
+        backgroundColor: dados.map(d => d.ano === 2025 ? '#2ab5b5' : '#3cb878'),
         borderRadius: 3
       }]
     },
@@ -569,7 +569,7 @@ function buildDashboard() {
       datasets: [{
         label: '% Meta',
         data: metPcts,
-        backgroundColor: metPcts.map(p => p >= 100 ? '#22c55e' : '#ef4444'),
+        backgroundColor: metPcts.map(p => p >= 100 ? '#3cb878' : '#ef4444'),
         borderRadius: 3
       }]
     },
@@ -588,7 +588,7 @@ function buildDashboard() {
     data: {
       labels,
       datasets: [
-        { label: 'Margem %', data: dados.map(d => parseFloat((d.m * 100).toFixed(1))), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', fill: true, tension: 0.4, pointRadius: 3 },
+        { label: 'Margem %', data: dados.map(d => parseFloat((d.m * 100).toFixed(1))), borderColor: '#2ab5b5', backgroundColor: 'rgba(42,181,181,0.08)', fill: true, tension: 0.4, pointRadius: 3 },
         { label: 'Meta 40%', data: dados.map(() => 40), borderColor: '#f59e0b', borderDash: [5, 5], pointRadius: 0, fill: false }
       ]
     },
@@ -608,8 +608,8 @@ function buildDashboard() {
       data: {
         labels: quinzenas.map(q => q.mes),
         datasets: [
-          { label: '1ª quinzena', data: quinzenas.map(q => q.q1), backgroundColor: '#3b82f6', borderRadius: 3 },
-          { label: '2ª quinzena', data: quinzenas.map(q => q.q2), backgroundColor: '#f59e0b', borderRadius: 3 }
+          { label: '1ª quinzena', data: quinzenas.map(q => q.q1), backgroundColor: '#2ab5b5', borderRadius: 3 },
+          { label: '2ª quinzena', data: quinzenas.map(q => q.q2), backgroundColor: '#3cb878', borderRadius: 3 }
         ]
       },
       options: baseOpts()
