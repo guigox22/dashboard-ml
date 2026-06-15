@@ -87,13 +87,13 @@ html, body {
   width: 36px;
   height: 36px;
   border-radius: 9px;
-  background: var(--grad);
+  background: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  font-size: 0;
   overflow: hidden;
+  padding: 4px;
 }
 
 /* SVG logo inline */
