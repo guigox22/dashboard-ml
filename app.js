@@ -641,9 +641,6 @@ function buildDashboard() {
       options: baseOpts()
     });
   }
-      options: baseOpts()
-    });
-  }
 }
 
 // ── CHART FACTORY ──────────────────────────────────────────────────────────────
