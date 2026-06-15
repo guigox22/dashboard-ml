@@ -260,6 +260,9 @@ function useFallbackData() {
 function processEstoqueCSV(text) {
   estoqueAntigo = [];
   const lines = text.split('\n').map(parseCSVLine);
+  // DEBUG — abre o console do navegador (F12) para ver as primeiras linhas do CSV
+  console.log('[Estoque CSV] Primeiras 15 linhas:');
+  lines.slice(0, 15).forEach((r, i) => console.log('Linha ' + i + ':', r));
 
   const MESES_HEADER = ['MAIO','JUNHO','JULHO','AGOSTO','SETEMBRO','OUTUBRO','NOVEMBRO','DEZEMBRO','JANEIRO','FEVEREIRO','MARCO','MARÇO','ABRIL'];
   const mMap = {jan:'Jan',fev:'Fev',mar:'Mar',abr:'Abr',mai:'Mai',jun:'Jun',jul:'Jul',ago:'Ago',set:'Set',out:'Out',nov:'Nov',dez:'Dez'};

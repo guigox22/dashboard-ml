@@ -87,17 +87,16 @@ html, body {
   width: 36px;
   height: 36px;
   border-radius: 9px;
-  background: var(--grad);
+  background: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  font-size: 0;
   overflow: hidden;
+  padding: 3px;
 }
 
-/* SVG logo inline */
-.logo-icon svg { width: 22px; height: 22px; }
+.logo-icon img { width: 100%; height: 100%; object-fit: contain; display: block; }
 
 .logo-text { font-size: 13.5px; font-weight: 600; color: #ffffff; line-height: 1.25; }
 .logo-sub  { font-size: 10.5px; color: rgba(255,255,255,0.45); letter-spacing: 0.02em; }
