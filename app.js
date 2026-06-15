@@ -260,6 +260,8 @@ function useFallbackData() {
 function processEstoqueCSV(text) {
   estoqueAntigo = [];
   const lines = text.split('\n').map(parseCSVLine);
+  console.log('[Estoque DEBUG] Linhas 0-5:');
+  lines.slice(0,6).forEach((r,i) => console.log('L'+i, JSON.stringify(r)));
   const mMap = {jan:'Jan',fev:'Fev',mar:'Mar',abr:'Abr',mai:'Mai',jun:'Jun',jul:'Jul',ago:'Ago',set:'Set',out:'Out',nov:'Nov',dez:'Dez'};
 
   for (let i = 0; i < lines.length; i++) {
