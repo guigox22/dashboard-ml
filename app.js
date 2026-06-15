@@ -259,13 +259,32 @@ function useFallbackData() {
 // ── PARSE ESTOQUE ANTIGO CSV ─────────────────────────────────────────────────
 function processEstoqueCSV(text) {
   estoqueAntigo = [];
-  const lines = text.split('\n').map(parseCSVLine);
-  console.log('[Estoque DEBUG] Linhas 0-5:');
-  lines.slice(0,6).forEach((r,i) => console.log('L'+i, JSON.stringify(r)));
   const mMap = {jan:'Jan',fev:'Fev',mar:'Mar',abr:'Abr',mai:'Mai',jun:'Jun',jul:'Jul',ago:'Ago',set:'Set',out:'Out',nov:'Nov',dez:'Dez'};
 
-  for (let i = 0; i < lines.length; i++) {
-    const r    = lines[i];
+  // Algumas células do Google Sheets têm quebra de linha interna,
+  // o que parte uma linha de produto em duas no CSV.
+  // Solução: re-parsear o CSV respeitando campos entre aspas.
+  const rows = [];
+  let cur = [], field = '', inQ = false;
+  for (let ci = 0; ci < text.length; ci++) {
+    const ch = text[ci];
+    if (ch === '"') {
+      if (inQ && text[ci+1] === '"') { field += '"'; ci++; }
+      else inQ = !inQ;
+    } else if (ch === ',' && !inQ) {
+      cur.push(field.trim()); field = '';
+    } else if ((ch === '\n' || ch === '\r') && !inQ) {
+      if (ch === '\r' && text[ci+1] === '\n') ci++;
+      cur.push(field.trim()); field = '';
+      rows.push(cur); cur = [];
+    } else {
+      field += ch;
+    }
+  }
+  if (field || cur.length) { cur.push(field.trim()); rows.push(cur); }
+
+  for (let i = 0; i < rows.length; i++) {
+    const r    = rows[i];
     const colA = (r[0] || '').trim(); // Data
     const colC = (r[2] || '').trim(); // Produto
     const colD = (r[3] || '').trim(); // Vendido
@@ -273,10 +292,10 @@ function processEstoqueCSV(text) {
     const colF = (r[5] || '').trim(); // Qtd
     const colG = (r[6] || '').trim(); // Mês
 
-    // Pula linhas sem data válida ou que sejam cabeçalhos
+    // Pula linhas vazias, cabeçalhos e linhas sem número na data
     if (!colA) continue;
     if (colA.toUpperCase() === 'DATA') continue;
-    if (!colA.match(/\d/)) continue; // linha sem número na data = cabeçalho de mês ou título
+    if (!colA.match(/\d/)) continue;
 
     // Produto obrigatório
     if (!colC || colC.toUpperCase() === 'PRODUTO') continue;
