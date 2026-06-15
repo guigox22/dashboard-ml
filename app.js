@@ -25,6 +25,7 @@ let metas      = [];
 let quinzenas  = [];
 let estoqueAntigo = [];
 const charts   = {};
+let anoFiltro  = 'todos'; // 'todos' | 2025 | 2026
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
 function showPage(id) {
@@ -49,6 +50,17 @@ document.addEventListener('DOMContentLoaded', () => {
     item.addEventListener('click', () => {
       const page = item.getAttribute('data-page');
       if (page) showPage(page);
+    });
+  });
+
+  // Filtro de ano
+  document.querySelectorAll('.year-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.year-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const val = btn.getAttribute('data-year');
+      anoFiltro = val === 'todos' ? 'todos' : parseInt(val);
+      buildDashboard();
     });
   });
 
@@ -384,7 +396,21 @@ function buildEstoque() {
 function buildDashboard() {
   if (!dados.length) return;
 
-  const labels = dados.map(d => d.mes.slice(0,3) + '/' + String(d.ano).slice(2));
+  // Aplica filtro de ano
+  const df = anoFiltro === 'todos' ? dados : dados.filter(d => d.ano === anoFiltro);
+  const mf = anoFiltro === 'todos' ? metas : metas.filter(m => {
+    // metas tem formato 'ABR/25', 'JAN/26' etc — filtra pelo sufixo do ano
+    const sufixo = String(anoFiltro).slice(2);
+    return m.mes.includes('/' + sufixo);
+  });
+  const qf = anoFiltro === 'todos' ? quinzenas : quinzenas.filter(q => {
+    const sufixo = String(anoFiltro).slice(2);
+    return q.mes.includes('/' + sufixo);
+  });
+
+  if (!df.length) return;
+
+  const labels = df.map(d => d.mes.slice(0,3) + '/' + String(d.ano).slice(2));
   const gc     = 'rgba(0,0,0,0.06)';
   const tc     = '#7a8a9a';
 
@@ -399,9 +425,9 @@ function buildDashboard() {
   });
 
   // ── Totais
-  const totalV   = dados.reduce((a, d) => a + d.v, 0);
-  const totalR   = dados.reduce((a, d) => a + d.r, 0);
-  const totalQ   = dados.reduce((a, d) => a + d.q, 0);
+  const totalV   = df.reduce((a, d) => a + d.v, 0);
+  const totalR   = df.reduce((a, d) => a + d.r, 0);
+  const totalQ   = df.reduce((a, d) => a + d.q, 0);
   const mGeral   = totalR / totalV;
 
   set('kpi-totalVendas', fmtRk(totalV));
@@ -412,7 +438,7 @@ function buildDashboard() {
 
   // ── Tabela anos
   const anos = {};
-  dados.forEach(d => {
+  df.forEach(d => {
     if (!anos[d.ano]) anos[d.ano] = { v: 0, r: 0, n: 0 };
     anos[d.ano].v += d.v; anos[d.ano].r += d.r; anos[d.ano].n++;
   });
@@ -423,14 +449,14 @@ function buildDashboard() {
       const bc = m >= 0.38 ? 'badge-green' : m >= 0.3 ? 'badge-yellow' : 'badge-red';
       return `<tr><td>${a}</td><td>${fmtR(x.v)}</td><td>${fmtR(x.r)}</td><td><span class="badge ${bc}">${fmtM(m)}</span></td><td>${x.n} meses</td></tr>`;
     }).join('') +
-    `<tr style="font-weight:600"><td>Total</td><td>${fmtR(totalV)}</td><td>${fmtR(totalR)}</td><td><span class="badge badge-green">${fmtM(mGeral)}</span></td><td>${dados.length} meses</td></tr>`;
+    `<tr style="font-weight:600"><td>Total</td><td>${fmtR(totalV)}</td><td>${fmtR(totalR)}</td><td><span class="badge badge-green">${fmtM(mGeral)}</span></td><td>${df.length} meses</td></tr>`;
   }
 
   // ── Mensal KPIs
-  const melhor   = dados.reduce((a, b) => b.v > a.v ? b : a);
-  const menor    = dados.reduce((a, b) => b.v < a.v ? b : a);
-  const maiorVol = dados.reduce((a, b) => b.q > a.q ? b : a);
-  const maiorM   = dados.reduce((a, b) => b.m > a.m ? b : a);
+  const melhor   = df.reduce((a, b) => b.v > a.v ? b : a);
+  const menor    = df.reduce((a, b) => b.v < a.v ? b : a);
+  const maiorVol = df.reduce((a, b) => b.q > a.q ? b : a);
+  const maiorM   = df.reduce((a, b) => b.m > a.m ? b : a);
   set('kpi-melhorMes',     cap(melhor.mes, 3) + '/' + melhor.ano);
   set('kpi-melhorVal',     fmtR(melhor.v));
   set('kpi-maiorVol',      cap(maiorVol.mes, 3) + '/' + maiorVol.ano);
@@ -443,7 +469,7 @@ function buildDashboard() {
   // ── Tabela mensal
   const tbMensal = document.getElementById('tabelaMensal');
   if (tbMensal) {
-    tbMensal.innerHTML = dados.map(d => {
+    tbMensal.innerHTML = df.map(d => {
       const bc = d.m >= 0.4 ? 'badge-green' : d.m >= 0.3 ? 'badge-yellow' : 'badge-red';
       return `<tr>
         <td>${capitalize(d.mes)}</td><td>${d.ano}</td>
@@ -455,9 +481,9 @@ function buildDashboard() {
   }
 
   // ── Metas KPIs
-  const metasOk = metas.filter(m => m.pct != null);
+  const metasOk = mf.filter(m => m.pct != null);
   if (metasOk.length) {
-    const totalMeta  = metas.reduce((a, m) => a + (m.meta || 0), 0);
+    const totalMeta  = mf.reduce((a, m) => a + (m.meta || 0), 0);
     const acima      = metasOk.filter(m => m.pct >= 1).length;
     const melhorMeta = metasOk.reduce((a, b) => b.pct > a.pct ? b : a);
     const piorMeta   = metasOk.reduce((a, b) => b.pct < a.pct ? b : a);
@@ -472,9 +498,9 @@ function buildDashboard() {
   // ── Metas bars
   const metasBars = document.getElementById('metasBars');
   if (metasBars) {
-    metasBars.innerHTML = metas.filter(m => m.pct != null).map(m => {
+    metasBars.innerHTML = mf.filter(m => m.pct != null).map(m => {
       const p     = Math.min(m.pct * 100, 200);
-      const color = m.pct >= 1 ? '#22c55e' : '#ef4444';
+      const color = m.pct >= 1 ? '#3cb878' : '#ef4444';
       return `<div class="prog-row">
         <div class="prog-label">
           <span>${m.mes}</span>
@@ -488,12 +514,12 @@ function buildDashboard() {
   }
 
   // ── Margem KPIs
-  const d2025  = dados.filter(d => d.ano === 2025);
-  const d2026  = dados.filter(d => d.ano === 2026);
+  const d2025  = df.filter(d => d.ano === 2025);
+  const d2026  = df.filter(d => d.ano === 2026);
   const m2025  = d2025.reduce((a,d)=>a+d.v,0) > 0 ? d2025.reduce((a,d)=>a+d.r,0)/d2025.reduce((a,d)=>a+d.v,0) : 0;
   const m2026  = d2026.reduce((a,d)=>a+d.v,0) > 0 ? d2026.reduce((a,d)=>a+d.r,0)/d2026.reduce((a,d)=>a+d.v,0) : 0;
-  const picoM  = dados.reduce((a, b) => b.m > a.m ? b : a);
-  const minM   = dados.reduce((a, b) => b.m < a.m ? b : a);
+  const picoM  = df.reduce((a, b) => b.m > a.m ? b : a);
+  const minM   = df.reduce((a, b) => b.m < a.m ? b : a);
   set('kpi-m2025',        fmtM(m2025));
   set('kpi-m2026',        fmtM(m2026));
   set('kpi-picoMargem',   fmtM(picoM.m));
@@ -504,7 +530,7 @@ function buildDashboard() {
   // ── Quinzenas tabela
   const tbQ = document.getElementById('tabelaQ');
   if (tbQ) {
-    tbQ.innerHTML = quinzenas.map(q => {
+    tbQ.innerHTML = qf.map(q => {
       const prop = q.total > 0 ? ((q.q1 / q.total) * 100).toFixed(0) + '%' : '—';
       return `<tr><td>${q.mes}</td><td>${fmtR(q.q1)}</td><td>${fmtR(q.q2)}</td><td>${fmtR(q.total)}</td><td>${prop}</td></tr>`;
     }).join('');
@@ -521,8 +547,8 @@ function buildDashboard() {
     data: {
       labels,
       datasets: [
-        { label: 'Vendas', data: dados.map(d => d.v), backgroundColor: '#2ab5b5', borderRadius: 3 },
-        { label: 'Custos', data: dados.map(d => d.c), backgroundColor: '#ef4444', borderRadius: 3 }
+        { label: 'Vendas', data: df.map(d => d.v), backgroundColor: '#2ab5b5', borderRadius: 3 },
+        { label: 'Custos', data: df.map(d => d.c), backgroundColor: '#ef4444', borderRadius: 3 }
       ]
     },
     options: baseOpts()
@@ -535,7 +561,7 @@ function buildDashboard() {
       labels,
       datasets: [{
         label: 'Resultado',
-        data: dados.map(d => d.r),
+        data: df.map(d => d.r),
         borderColor: '#3cb878',
         backgroundColor: 'rgba(60,184,120,0.10)',
         fill: true, tension: 0.4, pointRadius: 3, pointBackgroundColor: '#3cb878'
@@ -551,8 +577,8 @@ function buildDashboard() {
       labels,
       datasets: [{
         label: 'Vendas',
-        data: dados.map(d => d.v),
-        backgroundColor: dados.map(d => d.ano === 2025 ? '#2ab5b5' : '#3cb878'),
+        data: df.map(d => d.v),
+        backgroundColor: df.map(d => d.ano === 2025 ? '#2ab5b5' : '#3cb878'),
         borderRadius: 3
       }]
     },
@@ -560,8 +586,8 @@ function buildDashboard() {
   });
 
   // Metas
-  const metLabels = metas.filter(m => m.pct != null).map(m => m.mes);
-  const metPcts   = metas.filter(m => m.pct != null).map(m => parseFloat((m.pct * 100).toFixed(1)));
+  const metLabels = mf.filter(m => m.pct != null).map(m => m.mes);
+  const metPcts   = mf.filter(m => m.pct != null).map(m => parseFloat((m.pct * 100).toFixed(1)));
   mkChart('chartMetas', {
     type: 'bar',
     data: {
@@ -588,8 +614,8 @@ function buildDashboard() {
     data: {
       labels,
       datasets: [
-        { label: 'Margem %', data: dados.map(d => parseFloat((d.m * 100).toFixed(1))), borderColor: '#2ab5b5', backgroundColor: 'rgba(42,181,181,0.08)', fill: true, tension: 0.4, pointRadius: 3 },
-        { label: 'Meta 40%', data: dados.map(() => 40), borderColor: '#f59e0b', borderDash: [5, 5], pointRadius: 0, fill: false }
+        { label: 'Margem %', data: df.map(d => parseFloat((d.m * 100).toFixed(1))), borderColor: '#2ab5b5', backgroundColor: 'rgba(42,181,181,0.08)', fill: true, tension: 0.4, pointRadius: 3 },
+        { label: 'Meta 40%', data: df.map(() => 40), borderColor: '#f59e0b', borderDash: [5, 5], pointRadius: 0, fill: false }
       ]
     },
     options: {
@@ -602,16 +628,19 @@ function buildDashboard() {
   });
 
   // Quinzenas
-  if (quinzenas.length) {
+  if (qf.length) {
     mkChart('chartQ', {
       type: 'bar',
       data: {
-        labels: quinzenas.map(q => q.mes),
+        labels: qf.map(q => q.mes),
         datasets: [
-          { label: '1ª quinzena', data: quinzenas.map(q => q.q1), backgroundColor: '#2ab5b5', borderRadius: 3 },
-          { label: '2ª quinzena', data: quinzenas.map(q => q.q2), backgroundColor: '#3cb878', borderRadius: 3 }
+          { label: '1ª quinzena', data: qf.map(q => q.q1), backgroundColor: '#2ab5b5', borderRadius: 3 },
+          { label: '2ª quinzena', data: qf.map(q => q.q2), backgroundColor: '#3cb878', borderRadius: 3 }
         ]
       },
+      options: baseOpts()
+    });
+  }
       options: baseOpts()
     });
   }

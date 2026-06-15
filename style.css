@@ -87,13 +87,13 @@ html, body {
   width: 36px;
   height: 36px;
   border-radius: 9px;
-  background: #ffffff;
+  background: var(--grad);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  font-size: 0;
   overflow: hidden;
-  padding: 4px;
 }
 
 /* SVG logo inline */
@@ -514,6 +514,30 @@ tr:hover td { background: var(--teal-light); }
   color: #b91c1c;
   font-size: 13px;
   line-height: 1.6;
+}
+
+/* ── YEAR FILTER ──────────────────────────────────────────────────────────── */
+.year-btn {
+  padding: 5px 13px;
+  border-radius: 20px;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--muted2);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.year-btn:hover {
+  background: var(--bg3);
+  color: var(--text);
+}
+.year-btn.active {
+  background: var(--grad);
+  border-color: transparent;
+  color: #ffffff;
+  font-weight: 600;
 }
 
 /* ── RESPONSIVE ───────────────────────────────────────────────────────────── */
