@@ -260,9 +260,6 @@ function useFallbackData() {
 function processEstoqueCSV(text) {
   estoqueAntigo = [];
   const lines = text.split('\n').map(parseCSVLine);
-  // DEBUG — abre o console do navegador (F12) para ver as primeiras linhas do CSV
-  console.log('[Estoque CSV] Primeiras 15 linhas:');
-  lines.slice(0, 15).forEach((r, i) => console.log('Linha ' + i + ':', r));
 
   const MESES_HEADER = ['MAIO','JUNHO','JULHO','AGOSTO','SETEMBRO','OUTUBRO','NOVEMBRO','DEZEMBRO','JANEIRO','FEVEREIRO','MARCO','MARÇO','ABRIL'];
   const mMap = {jan:'Jan',fev:'Fev',mar:'Mar',abr:'Abr',mai:'Mai',jun:'Jun',jul:'Jul',ago:'Ago',set:'Set',out:'Out',nov:'Nov',dez:'Dez'};
@@ -273,8 +270,9 @@ function processEstoqueCSV(text) {
     const r = lines[i];
     const allCells = r.map(c => (c || '').trim().toUpperCase());
 
-    // Detecta cabeçalho de mês em qualquer coluna e atualiza mês corrente
-    const mesHeader = MESES_HEADER.find(m => allCells.some(c => c === m));
+    // Detecta cabeçalho de mês em qualquer coluna (col 0 ou col 2) e atualiza mês corrente
+    // Ex: ["MAIO","","","",""] ou linha com "MAIO" na col 2
+    const mesHeader = MESES_HEADER.find(m => allCells[0] === m || allCells[2] === m);
     if (mesHeader) {
       const norm = mesHeader.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().slice(0,3);
       mesCorrente = mMap[norm] || mesHeader.charAt(0) + mesHeader.slice(1,3).toLowerCase();
@@ -282,19 +280,29 @@ function processEstoqueCSV(text) {
     }
 
     const colA = (r[0] || '').trim(); // Data
+    const colB = (r[1] || '').trim(); // ID Venda
     const colC = (r[2] || '').trim(); // Produto
+    const colD = (r[3] || '').trim(); // Vendido
+    const colE = (r[4] || '').trim(); // Custo Total
 
-    // Pula cabeçalho de coluna e linhas vazias
-    if (!colA || colA.toUpperCase() === 'DATA') continue;
-    if (!colC || colC.toUpperCase() === 'PRODUTO' || colC === '') continue;
+    // Pula cabeçalhos de coluna
+    if (colA.toUpperCase() === 'DATA') continue;
+    if (colC.toUpperCase() === 'PRODUTO') continue;
 
-    const vendido = parseNum((r[3] || '').trim()); // Vendido
-    const custo   = parseNum((r[4] || '').trim()); // Custo Total
-    const qtd     = parseNum((r[5] || '').trim()); // Qtd
+    // Pula linhas de resumo (coluna H/I com totais — col 7 = "VENDIDO" ou "CUSTO TOTAL")
+    if (allCells[7] === 'VENDIDO' || allCells[7] === 'CUSTO TOTAL' || allCells[7] === 'MARKUP' || allCells[7] === 'MARGEM') continue;
+
+    // Para ser um produto válido: precisa ter data na col A e produto na col C
+    if (!colA || !colB.startsWith('#') && !colC) continue;
+    if (!colC || colC === '') continue;
+
+    const vendido = parseNum(colD);
+    const custo   = parseNum(colE);
+    const qtd     = parseNum((r[5] || '').trim());
 
     if (vendido == null || custo == null) continue;
 
-    // Tenta extrair mês da data (ex: "26 mai 18:48 hs"), senão usa mês do cabeçalho
+    // Extrai mês da data (ex: "26 mai 18:48 hs"), senão usa mês do cabeçalho
     let mes = mesCorrente;
     const mMatch = colA.toLowerCase().match(/(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)/);
     if (mMatch && mMap[mMatch[1]]) mes = mMap[mMatch[1]];
