@@ -9,9 +9,10 @@ const GID_DASHBOARD          = '199181687';
 const GID_ESTOQUE            = '620201163';
 const GID_NUEVOS_PRODUCTOS   = '1121502030';
 
+// Usar /pub?output=csv para evitar bloqueio de CORS em planilhas públicas
 const CSV_URL        = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID_DASHBOARD}`;
 const CSV_ESTOQUE    = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID_ESTOQUE}`;
-const CSV_ENTRADAS   = `https://docs.google.com/spreadsheets/d/${SHEET_NUEVOS_ID}/export?format=csv&gid=${GID_NUEVOS_PRODUCTOS}`;
+const CSV_ENTRADAS   = `https://docs.google.com/spreadsheets/d/e/2PACX-1vRfGWqVSMfpdACAxc80A9aR34U_F8imvSnqWo98qP1eV7To00ZUVQQR__uORP_h2ePXm13ff9Sjyuft/pub?output=csv`;
 
 // ── PAGE TITLES ───────────────────────────────────────────────────────────────
 const PAGE_TITLES = {
@@ -99,6 +100,13 @@ function parsePct(s) {
   return isNaN(n) ? null : n / 100;
 }
 
+async function fetchCSV(url) {
+  // Tenta fetch normal primeiro (funciona se a planilha for pública)
+  const resp = await fetch(url, { cache: 'no-store' });
+  if (!resp.ok) throw new Error('HTTP ' + resp.status + ' ao buscar ' + url);
+  return await resp.text();
+}
+
 // ── LOAD DATA ─────────────────────────────────────────────────────────────────
 async function loadData() {
   const loadingEl  = document.getElementById('loadingState');
@@ -114,15 +122,18 @@ async function loadData() {
   statusDot.style.boxShadow  = '0 0 6px #f59e0b';
 
   try {
-    const [resp, respEA, respEN] = await Promise.all([
-      fetch(CSV_URL     + '&cachebust=' + Date.now()),
-      fetch(CSV_ESTOQUE + '&cachebust=' + Date.now()),
-      fetch(CSV_ENTRADAS + '&cachebust=' + Date.now())
+    const cb = '&cachebust=' + Date.now();
+    const cbP = (CSV_ENTRADAS.includes('?') ? '&' : '?') + 'cachebust=' + Date.now();
+
+    // Carrega planilha principal (obrigatória) e as demais em paralelo com falha silenciosa
+    const [text, textEA, textEN] = await Promise.all([
+      fetchCSV(CSV_URL + cb),
+      fetchCSV(CSV_ESTOQUE + cb).catch(() => ''),
+      fetchCSV(CSV_ENTRADAS + cbP).catch(err => {
+        console.warn('Entradas não carregadas:', err.message);
+        return '';
+      })
     ]);
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const text   = await resp.text();
-    const textEA = respEA.ok ? await respEA.text() : '';
-    const textEN = respEN.ok ? await respEN.text() : '';
 
     processCSV(text);
     if (textEA) processEstoqueCSV(textEA);
@@ -141,9 +152,13 @@ async function loadData() {
     loadingEl.innerHTML = `
       <div class="error-box">
         ❌ Erro ao carregar dados: ${err.message}<br>
-        <small style="opacity:.7">Verifique se a planilha está pública (qualquer pessoa com o link pode ver).</small>
+        <small style="opacity:.7;display:block;margin-top:6px">
+          Verifique se a planilha principal está pública:<br>
+          <strong>Planilha → Compartilhar → Qualquer pessoa com o link pode ver</strong><br>
+          E também: <strong>Arquivo → Compartilhar → Publicar na web → CSV</strong>
+        </small>
       </div>
-      <button class="sync-btn" onclick="loadData()" style="margin-top:12px;max-width:180px">↻ Tentar novamente</button>`;
+      <button class="sync-btn" onclick="loadData()" style="margin-top:12px;max-width:200px">↻ Tentar novamente</button>`;
     statusText.textContent     = 'Erro de conexão';
     statusDot.style.background = '#ef4444';
     statusDot.style.boxShadow  = '0 0 6px #ef4444';
@@ -247,31 +262,92 @@ function processEstoqueCSV(text) {
 }
 
 // ── PARSE ENTRADA DE NOVOS PRODUTOS ──────────────────────────────────────────
+// Lê a planilha de entradas de forma flexível:
+// Tenta detectar cabeçalho automaticamente e ler colunas de Mês, Ano e Qtd
 function processEntradaCSV(text) {
   entradasNovas = [];
+  if (!text || !text.trim()) return;
+
   const lines = text.split('\n').map(parseCSVLine);
-  const monthNames = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  if (lines.length < 2) return;
 
-  let currentYear = null;
+  const monthNames = ['janeiro','fevereiro','março','abril','maio','junho','julho',
+                      'agosto','setembro','outubro','novembro','dezembro',
+                      'jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  const isMonth = s => monthNames.includes((s || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim());
 
-  for (let i = 0; i < lines.length; i++) {
+  // Detecta linha de cabeçalho (primeira linha com conteúdo)
+  let headerIdx = 0;
+  for (let i = 0; i < Math.min(5, lines.length); i++) {
+    if (lines[i].some(c => c && c.trim())) { headerIdx = i; break; }
+  }
+
+  const header = lines[headerIdx].map(h => (h || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim());
+
+  // Tenta encontrar colunas pelo cabeçalho
+  let idxMes  = header.findIndex(h => h.includes('mes') || h.includes('month') || h === 'mes');
+  let idxAno  = header.findIndex(h => h.includes('ano') || h.includes('year') || h === 'ano');
+  let idxQtd  = header.findIndex(h => h.includes('qtd') || h.includes('quantidade') || h.includes('total') || h.includes('entry') || h.includes('entrad'));
+
+  // Se não achou pelo cabeçalho, usa heurística linha a linha
+  const useHeuristic = idxMes === -1 && idxQtd === -1;
+
+  let currentYear = new Date().getFullYear();
+
+  for (let i = headerIdx + 1; i < lines.length; i++) {
     const r = lines[i];
-    const colB = (r[1] || '').trim(); // Ano ou Mês
-    const colC = (r[2] || '').trim(); // Mês se colB for Ano
-    const colE = (r[4] || '').trim(); // Quantidade de novos produtos (Supondo coluna E/Qtd baseada na estrutura de vendas)
+    if (!r || r.every(c => !c || !c.trim())) continue; // linha vazia
 
-    if (colB === '2025' || colB === '2026') currentYear = parseInt(colB);
+    if (!useHeuristic) {
+      // Modo cabeçalho: lê pelas colunas detectadas
+      const mes = idxMes >= 0 ? (r[idxMes] || '').trim() : '';
+      const ano = idxAno >= 0 ? parseInt(r[idxAno]) : currentYear;
+      const qtd = idxQtd >= 0 ? parseNum(r[idxQtd]) : null;
 
-    const isMonth = s => monthNames.includes((s || '').toLowerCase());
-    if (isMonth(colC) || isMonth(colB)) {
-      const mes = isMonth(colC) ? colC : colB;
-      const qtdEntrada = parseNum(r[5]) || parseNum(r[4]) || 0; // Adaptado para ler a coluna numérica de volumes
-      
-      if (currentYear) {
-        entradasNovas.push({ ano: currentYear, mes: capitalize(mes), qtd: qtdEntrada });
+      if (mes && !isNaN(ano) && ano > 2000 && qtd != null) {
+        entradasNovas.push({ ano, mes: capitalize(mes), qtd });
+      }
+    } else {
+      // Modo heurístico: varre a linha buscando padrões
+      let ano = null, mes = null, qtd = null;
+
+      for (let c = 0; c < r.length; c++) {
+        const val = (r[c] || '').trim();
+        if (!val) continue;
+        if (val === '2025' || val === '2026' || val === '2027') { ano = parseInt(val); continue; }
+        if (isMonth(val) && !mes) { mes = capitalize(val.charAt(0).toUpperCase() + val.slice(1)); continue; }
+        const n = parseNum(val);
+        if (n != null && n > 0 && n < 100000 && qtd == null) { qtd = n; }
+      }
+
+      // Se não achou ano na linha, tenta nas linhas anteriores (estrutura de grupo por ano)
+      if (!ano) {
+        for (let back = i - 1; back >= headerIdx; back--) {
+          const prevRow = lines[back];
+          const y = prevRow.find(c => c === '2025' || c === '2026' || c === '2027');
+          if (y) { ano = parseInt(y); break; }
+        }
+      }
+
+      if (mes && qtd != null && ano) {
+        entradasNovas.push({ ano, mes, qtd });
+      } else if (!mes) {
+        // Linha pode conter só Mês e Qtd numa estrutura simples (sem coluna de ano)
+        // Tenta: col0=Mês col1=Qtd ou col0=Data col1=Produto col2=Qtd
+        for (let c = 0; c < r.length; c++) {
+          if (isMonth(r[c])) {
+            const q = parseNum(r[c+1]) || parseNum(r[c+2]);
+            if (q != null) {
+              entradasNovas.push({ ano: currentYear, mes: capitalize(r[c].trim()), qtd: q });
+              break;
+            }
+          }
+        }
       }
     }
   }
+
+  console.log(`✅ Entradas carregadas: ${entradasNovas.length} registros`, entradasNovas);
 }
 
 function useFallbackData() {
@@ -359,7 +435,20 @@ function buildDashboard() {
 
   const tbEntradas = document.getElementById('tabelaEntradas');
   if (tbEntradas) {
-    tbEntradas.innerHTML = ef.map(e => `<tr><td>${e.mes}</td><td>${e.ano}</td><td>${e.qtd} un</td></tr>`).join('');
+    if (ef.length) {
+      tbEntradas.innerHTML = ef.map(e => `<tr><td>${e.mes}</td><td>${e.ano}</td><td>${e.qtd} un</td></tr>`).join('');
+      const dbg = document.getElementById('entradasDebug');
+      if (dbg) dbg.style.display = 'none';
+    } else {
+      tbEntradas.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#7a8a9a;padding:16px">Nenhum dado carregado da planilha de entradas.<br><small>Certifique-se que a planilha está publicada na web como CSV.</small></td></tr>';
+      const dbg = document.getElementById('entradasDebug');
+      if (dbg) {
+        dbg.style.display = 'block';
+        dbg.innerHTML = `⚠️ <strong>Dica:</strong> A planilha de entradas (<code>${SHEET_NUEVOS_ID}</code>) precisa estar publicada.<br>
+          No Google Sheets: <strong>Arquivo → Compartilhar → Publicar na web</strong> → selecione a aba → formato <strong>CSV</strong> → Publicar.<br>
+          Enquanto isso, os dados de exemplo aparecem no gráfico acima.`;
+      }
+    }
   }
 
   // Gráfico de Entrada de Novos Produtos
