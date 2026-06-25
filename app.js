@@ -262,88 +262,45 @@ function processEstoqueCSV(text) {
 }
 
 // ── PARSE ENTRADA DE NOVOS PRODUTOS ──────────────────────────────────────────
-// Lê a planilha de entradas de forma flexível:
-// Tenta detectar cabeçalho automaticamente e ler colunas de Mês, Ano e Qtd
+// Layout da planilha:
+// Col A: Mês | B-F: 1ª-5ª Semana | G: Total | H: Produtos Ok para Venda
 function processEntradaCSV(text) {
   entradasNovas = [];
   if (!text || !text.trim()) return;
 
   const lines = text.split('\n').map(parseCSVLine);
-  if (lines.length < 2) return;
 
-  const monthNames = ['janeiro','fevereiro','março','abril','maio','junho','julho',
-                      'agosto','setembro','outubro','novembro','dezembro',
-                      'jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
-  const isMonth = s => monthNames.includes((s || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim());
+  const mesesPT = ['agosto','setembro','outubro','novembro','dezembro',
+                   'janeiro','fevereiro','março','abril','maio','junho','julho',
+                   'agosto','set','out','nov','dez','jan','fev','mar','abr','mai','jun','jul','ago'];
 
-  // Detecta linha de cabeçalho (primeira linha com conteúdo)
-  let headerIdx = 0;
-  for (let i = 0; i < Math.min(5, lines.length); i++) {
-    if (lines[i].some(c => c && c.trim())) { headerIdx = i; break; }
-  }
+  const isMonth = s => mesesPT.includes(
+    (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim()
+  );
 
-  const header = lines[headerIdx].map(h => (h || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim());
+  // Detecta o ano atual: se mês é ago-dez → 2025, jan-jun → 2026
+  const mesesAno2025 = ['agosto','setembro','outubro','novembro','dezembro'];
 
-  // Tenta encontrar colunas pelo cabeçalho
-  let idxMes  = header.findIndex(h => h.includes('mes') || h.includes('month') || h === 'mes');
-  let idxAno  = header.findIndex(h => h.includes('ano') || h.includes('year') || h === 'ano');
-  let idxQtd  = header.findIndex(h => h.includes('qtd') || h.includes('quantidade') || h.includes('total') || h.includes('entry') || h.includes('entrad'));
+  for (let i = 0; i < lines.length; i++) {
+    const r    = lines[i];
+    const colA = (r[0] || '').trim();  // Mês
+    const colG = (r[6] || '').trim();  // Total
+    const colH = (r[7] || '').trim();  // Produtos Ok para Venda
 
-  // Se não achou pelo cabeçalho, usa heurística linha a linha
-  const useHeuristic = idxMes === -1 && idxQtd === -1;
+    if (!isMonth(colA)) continue;
 
-  let currentYear = new Date().getFullYear();
+    const mesNorm = colA.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+    const ano = mesesAno2025.includes(mesNorm) ? 2025 : 2026;
+    const total = parseNum(colG);
+    const okVenda = parseNum(colH);
 
-  for (let i = headerIdx + 1; i < lines.length; i++) {
-    const r = lines[i];
-    if (!r || r.every(c => !c || !c.trim())) continue; // linha vazia
-
-    if (!useHeuristic) {
-      // Modo cabeçalho: lê pelas colunas detectadas
-      const mes = idxMes >= 0 ? (r[idxMes] || '').trim() : '';
-      const ano = idxAno >= 0 ? parseInt(r[idxAno]) : currentYear;
-      const qtd = idxQtd >= 0 ? parseNum(r[idxQtd]) : null;
-
-      if (mes && !isNaN(ano) && ano > 2000 && qtd != null) {
-        entradasNovas.push({ ano, mes: capitalize(mes), qtd });
-      }
-    } else {
-      // Modo heurístico: varre a linha buscando padrões
-      let ano = null, mes = null, qtd = null;
-
-      for (let c = 0; c < r.length; c++) {
-        const val = (r[c] || '').trim();
-        if (!val) continue;
-        if (val === '2025' || val === '2026' || val === '2027') { ano = parseInt(val); continue; }
-        if (isMonth(val) && !mes) { mes = capitalize(val.charAt(0).toUpperCase() + val.slice(1)); continue; }
-        const n = parseNum(val);
-        if (n != null && n > 0 && n < 100000 && qtd == null) { qtd = n; }
-      }
-
-      // Se não achou ano na linha, tenta nas linhas anteriores (estrutura de grupo por ano)
-      if (!ano) {
-        for (let back = i - 1; back >= headerIdx; back--) {
-          const prevRow = lines[back];
-          const y = prevRow.find(c => c === '2025' || c === '2026' || c === '2027');
-          if (y) { ano = parseInt(y); break; }
-        }
-      }
-
-      if (mes && qtd != null && ano) {
-        entradasNovas.push({ ano, mes, qtd });
-      } else if (!mes) {
-        // Linha pode conter só Mês e Qtd numa estrutura simples (sem coluna de ano)
-        // Tenta: col0=Mês col1=Qtd ou col0=Data col1=Produto col2=Qtd
-        for (let c = 0; c < r.length; c++) {
-          if (isMonth(r[c])) {
-            const q = parseNum(r[c+1]) || parseNum(r[c+2]);
-            if (q != null) {
-              entradasNovas.push({ ano: currentYear, mes: capitalize(r[c].trim()), qtd: q });
-              break;
-            }
-          }
-        }
-      }
+    if (total != null) {
+      entradasNovas.push({
+        ano,
+        mes: capitalize(colA),
+        qtd: total,
+        okVenda: okVenda || 0
+      });
     }
   }
 
@@ -431,34 +388,54 @@ function buildDashboard() {
 
   // Renderizar a Tabela e KPIs de Entrada de Produtos
   const totalEntradas = ef.reduce((a, b) => a + b.qtd, 0);
+  const totalOkVenda  = ef.reduce((a, b) => a + (b.okVenda || 0), 0);
   set('kpi-totalEntradas', totalEntradas.toLocaleString('pt-BR'));
+  set('kpi-totalOkVenda',  totalOkVenda.toLocaleString('pt-BR'));
 
   const tbEntradas = document.getElementById('tabelaEntradas');
   if (tbEntradas) {
     if (ef.length) {
-      tbEntradas.innerHTML = ef.map(e => `<tr><td>${e.mes}</td><td>${e.ano}</td><td>${e.qtd} un</td></tr>`).join('');
+      tbEntradas.innerHTML = ef.map(e => {
+        const pct = e.qtd > 0 ? Math.round((e.okVenda / e.qtd) * 100) : 0;
+        return `<tr>
+          <td>${e.mes}</td>
+          <td>${e.ano}</td>
+          <td>${e.qtd}</td>
+          <td>${e.okVenda || 0}</td>
+          <td><span class="badge ${pct >= 80 ? 'badge-green' : pct >= 50 ? 'badge-yellow' : 'badge-red'}">${pct}%</span></td>
+        </tr>`;
+      }).join('');
       const dbg = document.getElementById('entradasDebug');
       if (dbg) dbg.style.display = 'none';
     } else {
-      tbEntradas.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#7a8a9a;padding:16px">Nenhum dado carregado da planilha de entradas.<br><small>Certifique-se que a planilha está publicada na web como CSV.</small></td></tr>';
+      tbEntradas.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#7a8a9a;padding:16px">Nenhum dado carregado da planilha de entradas.<br><small>Certifique-se que a planilha está publicada na web como CSV.</small></td></tr>';
       const dbg = document.getElementById('entradasDebug');
       if (dbg) {
         dbg.style.display = 'block';
-        dbg.innerHTML = `⚠️ <strong>Dica:</strong> A planilha de entradas (<code>${SHEET_NUEVOS_ID}</code>) precisa estar publicada.<br>
-          No Google Sheets: <strong>Arquivo → Compartilhar → Publicar na web</strong> → selecione a aba → formato <strong>CSV</strong> → Publicar.<br>
-          Enquanto isso, os dados de exemplo aparecem no gráfico acima.`;
+        dbg.innerHTML = `⚠️ <strong>Dica:</strong> A planilha de entradas precisa estar publicada.<br>
+          No Google Sheets: <strong>Arquivo → Compartilhar → Publicar na web</strong> → selecione a aba → formato <strong>CSV</strong> → Publicar.`;
       }
     }
   }
 
-  // Gráfico de Entrada de Novos Produtos
+  // Gráfico de Entrada de Novos Produtos (Total + Ok para Venda)
   mkChart('chartEntradas', {
     type: 'bar',
     data: {
       labels: ef.map(e => e.mes.slice(0,3) + '/' + String(e.ano).slice(2)),
-      datasets: [{ label: 'Entradas', data: ef.map(e => e.qtd), backgroundColor: '#8b5cf6', borderRadius: 3 }]
+      datasets: [
+        { label: 'Total Entradas', data: ef.map(e => e.qtd),      backgroundColor: '#8b5cf6', borderRadius: 3 },
+        { label: 'Ok para Venda',  data: ef.map(e => e.okVenda || 0), backgroundColor: '#2ab5b5', borderRadius: 3 }
+      ]
     },
-    options: baseOpts(v => v + ' un')
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: true, labels: { color: '#5a6a7a', font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#7a8a9a', font: { size: 10 }, maxRotation: 45 }, grid: { color: 'rgba(0,0,0,0.06)' } },
+        y: { ticks: { color: '#7a8a9a', font: { size: 10 }, callback: v => v + ' un' }, grid: { color: 'rgba(0,0,0,0.06)' } }
+      }
+    }
   });
 
   // Restante das renderizações padrões (Vendas, Margens, Metas...)
