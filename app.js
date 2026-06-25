@@ -443,16 +443,204 @@ function buildDashboard() {
   const totalR = df.reduce((a, d) => a + d.r, 0);
   const totalQ = df.reduce((a, d) => a + d.q, 0);
   set('kpi-totalVendas', fmtRk(totalV));
-  set('kpi-resultado', fmtRk(totalR));
-  set('kpi-qtd', totalQ.toLocaleString('pt-BR'));
-  set('kpi-ticket', fmtR(totalV / totalQ));
+  set('kpi-resultado',   fmtRk(totalR));
+  set('kpi-qtd',         totalQ.toLocaleString('pt-BR'));
+  set('kpi-ticket',      fmtR(totalV / totalQ));
 
-  // (Manter os demais gráficos originais como chartVC, chartRes, chartMargem etc.)
+  const margemGeral = totalV > 0 ? (totalR / totalV * 100).toFixed(1) : '—';
+  set('kpi-margemGeral', 'Margem ' + margemGeral + '%');
+
+  // ── chartVC: Vendas vs Custos ────────────────────────────────────────────
   mkChart('chartVC', {
     type: 'bar',
-    data: { labels, datasets: [{ label: 'Vendas', data: df.map(d => d.v), backgroundColor: '#2ab5b5' }] },
+    data: {
+      labels,
+      datasets: [
+        { label: 'Vendas', data: df.map(d => d.v), backgroundColor: '#3b82f6', borderRadius: 3 },
+        { label: 'Custos', data: df.map(d => d.c), backgroundColor: '#ef4444', borderRadius: 3 }
+      ]
+    },
+    options: { ...baseOpts(), plugins: { legend: { display: false } } }
+  });
+
+  // ── chartRes: Resultado mensal ───────────────────────────────────────────
+  mkChart('chartRes', {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Resultado', data: df.map(d => d.r),
+        borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)',
+        tension: 0.3, fill: true, pointRadius: 4, pointBackgroundColor: '#22c55e'
+      }]
+    },
     options: baseOpts()
   });
+
+  // ── Resumo por ano ───────────────────────────────────────────────────────
+  const anos = [...new Set(df.map(d => d.ano))].sort();
+  const tabelaAnos = document.getElementById('tabelaAnos');
+  if (tabelaAnos) {
+    tabelaAnos.innerHTML = anos.map(ano => {
+      const ad = df.filter(d => d.ano === ano);
+      const av = ad.reduce((a, d) => a + d.v, 0);
+      const ar = ad.reduce((a, d) => a + d.r, 0);
+      const am = av > 0 ? (ar / av * 100).toFixed(1) : '—';
+      return `<tr><td>${ano}</td><td>${fmtR(av)}</td><td>${fmtR(ar)}</td><td>${am}%</td><td>${ad.length}</td></tr>`;
+    }).join('');
+  }
+
+  // ── PÁGINA MENSAL ────────────────────────────────────────────────────────
+  const melhor  = df.reduce((a, b) => b.v > a.v ? b : a, df[0]);
+  const menor   = df.reduce((a, b) => b.v < a.v ? b : a, df[0]);
+  const maiorV  = df.reduce((a, b) => b.q > a.q ? b : a, df[0]);
+  const maiorM  = df.reduce((a, b) => b.m > a.m ? b : a, df[0]);
+
+  set('kpi-melhorMes',    melhor.mes);
+  set('kpi-melhorVal',    fmtR(melhor.v));
+  set('kpi-menorMes',     menor.mes);
+  set('kpi-menorVal',     fmtR(menor.v));
+  set('kpi-maiorVol',     maiorV.mes);
+  set('kpi-maiorVolVal',  maiorV.q + ' un');
+  set('kpi-maiorMargem',  maiorM.mes);
+  set('kpi-maiorMargemVal', fmtM(maiorM.m));
+
+  // Gráfico mensal separado por ano
+  const mesesOrdem = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  const d25 = df.filter(d => d.ano === 2025);
+  const d26 = df.filter(d => d.ano === 2026);
+  const labMensal = [...new Set(df.map(d => d.mes.slice(0,3).toLowerCase()))].sort((a,b) => mesesOrdem.indexOf(a) - mesesOrdem.indexOf(b));
+
+  mkChart('chartMensal', {
+    type: 'bar',
+    data: {
+      labels: labMensal.map(m => m.charAt(0).toUpperCase() + m.slice(1)),
+      datasets: [
+        { label: '2025', data: labMensal.map(m => { const r = d25.find(d => d.mes.toLowerCase().startsWith(m)); return r ? r.v : null; }), backgroundColor: '#3b82f6', borderRadius: 3 },
+        { label: '2026', data: labMensal.map(m => { const r = d26.find(d => d.mes.toLowerCase().startsWith(m)); return r ? r.v : null; }), backgroundColor: '#f59e0b', borderRadius: 3 }
+      ]
+    },
+    options: { ...baseOpts(), plugins: { legend: { display: true, labels: { color: tc, font: { size: 11 } } } } }
+  });
+
+  // Tabela mensal completa
+  const tabelaMensal = document.getElementById('tabelaMensal');
+  if (tabelaMensal) {
+    tabelaMensal.innerHTML = df.map(d => {
+      const bc = d.r >= 0 ? 'badge-green' : 'badge-red';
+      return `<tr>
+        <td>${d.mes}</td><td>${d.ano}</td>
+        <td>${fmtR(d.v)}</td><td>${fmtR(d.c)}</td>
+        <td><span class="badge ${bc}">${fmtR(d.r)}</span></td>
+        <td>${d.q}</td><td>${fmtR(d.tm)}</td><td>${fmtM(d.m)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ── PÁGINA METAS ─────────────────────────────────────────────────────────
+  if (metas.length) {
+    const metaTotal   = metas.reduce((a, m) => a + (m.meta || 0), 0);
+    const mesesAcima  = metas.filter(m => m.pct != null && m.pct >= 1).length;
+    const melhorMeta  = metas.reduce((a, b) => (b.pct || 0) > (a.pct || 0) ? b : a, metas[0]);
+    const piorMeta    = metas.reduce((a, b) => (b.pct || 1) < (a.pct || 1) ? b : a, metas[0]);
+
+    set('kpi-metaTotal',    fmtRk(metaTotal));
+    set('kpi-mesesAcima',   mesesAcima + ' de ' + metas.length);
+    set('kpi-melhorMeta',   melhorMeta ? fmtM(melhorMeta.pct) : '—');
+    set('kpi-piorMeta',     piorMeta   ? fmtM(piorMeta.pct)   : '—');
+    set('kpi-piorMetaMes',  piorMeta   ? piorMeta.mes          : '—');
+
+    mkChart('chartMetas', {
+      type: 'bar',
+      data: {
+        labels: metas.map(m => m.mes),
+        datasets: [{
+          label: '% Meta', data: metas.map(m => m.pct != null ? +(m.pct * 100).toFixed(1) : null),
+          backgroundColor: metas.map(m => (m.pct || 0) >= 1 ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)'),
+          borderRadius: 3
+        }]
+      },
+      options: {
+        ...baseOpts(v => v + '%'),
+        plugins: { legend: { display: false }, annotation: {} }
+      }
+    });
+
+    const metasBars = document.getElementById('metasBars');
+    if (metasBars) {
+      metasBars.innerHTML = metas.map(m => {
+        const pct = m.pct != null ? Math.min(m.pct * 100, 150) : 0;
+        const clr = pct >= 100 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
+        return `<div class="prog-row">
+          <div class="prog-label"><span>${m.mes}</span><span>${m.pct != null ? fmtM(m.pct) : '—'}</span></div>
+          <div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:${clr}"></div></div>
+        </div>`;
+      }).join('');
+    }
+  }
+
+  // ── PÁGINA MARGEM ────────────────────────────────────────────────────────
+  const d2025 = df.filter(d => d.ano === 2025);
+  const d2026 = df.filter(d => d.ano === 2026);
+  const avg = arr => arr.length ? arr.reduce((a, d) => a + d.m, 0) / arr.length : null;
+
+  set('kpi-m2025', d2025.length ? fmtM(avg(d2025)) : '—');
+  set('kpi-m2026', d2026.length ? fmtM(avg(d2026)) : '—');
+
+  const picoM = df.reduce((a, b) => b.m > a.m ? b : a, df[0]);
+  const minM  = df.reduce((a, b) => b.m < a.m ? b : a, df[0]);
+  set('kpi-picoMargem',    fmtM(picoM.m));
+  set('kpi-picoMargemMes', picoM.mes + '/' + picoM.ano);
+  set('kpi-minMargem',     fmtM(minM.m));
+  set('kpi-minMargemMes',  minM.mes + '/' + minM.ano);
+
+  mkChart('chartMargem', {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Margem (%)', data: df.map(d => +(d.m * 100).toFixed(1)),
+          borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)',
+          tension: 0.3, fill: true, pointRadius: 4, pointBackgroundColor: '#3b82f6'
+        },
+        {
+          label: 'Meta 30%', data: df.map(() => 30),
+          borderColor: '#f59e0b', borderDash: [6, 3], borderWidth: 1.5,
+          pointRadius: 0, fill: false
+        }
+      ]
+    },
+    options: {
+      ...baseOpts(v => v + '%'),
+      plugins: { legend: { display: true, labels: { color: tc, font: { size: 11 } } } }
+    }
+  });
+
+  // ── PÁGINA QUINZENAS ─────────────────────────────────────────────────────
+  if (quinzenas.length) {
+    mkChart('chartQ', {
+      type: 'bar',
+      data: {
+        labels: quinzenas.map(q => q.mes),
+        datasets: [
+          { label: '1ª Quinzena', data: quinzenas.map(q => q.q1), backgroundColor: '#3b82f6', borderRadius: 3 },
+          { label: '2ª Quinzena', data: quinzenas.map(q => q.q2), backgroundColor: '#f59e0b', borderRadius: 3 }
+        ]
+      },
+      options: { ...baseOpts(), plugins: { legend: { display: true, labels: { color: tc, font: { size: 11 } } } } }
+    });
+
+    const tabelaQ = document.getElementById('tabelaQ');
+    if (tabelaQ) {
+      tabelaQ.innerHTML = quinzenas.map(q => {
+        const prop = q.total > 0 ? (q.q1 / q.total * 100).toFixed(0) : '—';
+        return `<tr><td>${q.mes}</td><td>${fmtR(q.q1)}</td><td>${fmtR(q.q2)}</td><td>${fmtR(q.total)}</td><td>${prop}%</td></tr>`;
+      }).join('');
+    }
+  }
+
+  buildEstoque();
 }
 
 function mkChart(id, cfg) {
