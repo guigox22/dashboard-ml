@@ -11,7 +11,6 @@
 
 <div class="app">
 
-  <!-- ═══════════════════════════════ SIDEBAR ════════════════════════════════ -->
   <nav class="sidebar">
     <div class="sidebar-logo">
       <div class="logo-icon">
@@ -33,6 +32,9 @@
     <div class="nav-item" data-page="metas">
       <span class="nav-icon">◎</span> Metas
     </div>
+    <div class="nav-item" data-page="entradas">
+      <span class="nav-icon">📥</span> Entrada de Novos Produtos
+    </div>
 
     <div class="nav-section">Análise</div>
     <div class="nav-item" data-page="margem">
@@ -53,10 +55,8 @@
     </div>
   </nav>
 
-  <!-- ═══════════════════════════════ MAIN ══════════════════════════════════ -->
   <div class="main">
 
-    <!-- TOPBAR -->
     <div class="topbar">
       <div>
         <div class="topbar-title" id="pageTitle">Visão Geral</div>
@@ -80,19 +80,15 @@
       </div>
     </div>
 
-    <!-- CONTENT -->
     <div class="content">
 
-      <!-- LOADING -->
       <div class="loading" id="loadingState">
         <div class="spinner"></div>
         <div class="loading-text">Buscando dados do Google Sheets...</div>
       </div>
 
-      <!-- DASHBOARD (hidden until data loads) -->
       <div id="dashContent" style="display:none">
 
-        <!-- ══════════════ VISÃO GERAL ══════════════ -->
         <div class="page active" id="page-visao">
           <div class="kpi-grid">
             <div class="kpi">
@@ -152,7 +148,6 @@
           </div>
         </div>
 
-        <!-- ══════════════ VENDAS MENSAIS ══════════════ -->
         <div class="page" id="page-mensal">
           <div class="kpi-grid">
             <div class="kpi">
@@ -204,7 +199,6 @@
           </div>
         </div>
 
-        <!-- ══════════════ METAS ══════════════ -->
         <div class="page" id="page-metas">
           <div class="kpi-grid">
             <div class="kpi">
@@ -220,7 +214,7 @@
             <div class="kpi">
               <div class="kpi-label">🥇 Melhor atingimento</div>
               <div class="kpi-value" id="kpi-melhorMeta">—</div>
-              <div class="kpi-sub" id="kpi-melhorMetaMes">—</div>
+              <div class="kpi-sub" id="metasBars"></div>
             </div>
             <div class="kpi">
               <div class="kpi-label">⚠ Pior atingimento</div>
@@ -242,7 +236,40 @@
           </div>
         </div>
 
-        <!-- ══════════════ MARGEM ══════════════ -->
+        <div class="page" id="page-entradas">
+          <div class="kpi-grid">
+            <div class="kpi">
+              <div class="kpi-label">📥 Total de Entradas</div>
+              <div class="kpi-value" id="kpi-totalEntradas">—</div>
+              <div class="kpi-sub">Novos produtos integrados</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Histórico de Entrada de Produtos</div>
+            <div class="legend">
+              <div class="legend-item"><span class="legend-dot" style="background:#8b5cf6"></span>Novos Produtos</div>
+            </div>
+            <div class="chart-wrap tall">
+              <canvas id="chartEntradas" role="img" aria-label="Quantidade de novos produtos por mês">Entradas mensais.</canvas>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Detalhamento de Entradas</div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Mês</th><th>Ano</th><th>Quantidade de Entrada</th>
+                  </tr>
+                </thead>
+                <tbody id="tabelaEntradas"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <div class="page" id="page-margem">
           <div class="kpi-grid">
             <div class="kpi">
@@ -279,7 +306,6 @@
           </div>
         </div>
 
-        <!-- ══════════════ QUINZENAS ══════════════ -->
         <div class="page" id="page-quinzena">
           <div class="card">
             <div class="card-title">Vendas: 1ª vs 2ª quinzena (R$)</div>
@@ -304,7 +330,6 @@
           </div>
         </div>
 
-        <!-- ══════════════ ESTOQUE ANTIGO ══════════════ -->
         <div class="page" id="page-estoque">
           <div class="kpi-grid">
             <div class="kpi">
@@ -320,7 +345,7 @@
             <div class="kpi">
               <div class="kpi-label">📉 Resultado</div>
               <div class="kpi-value kpi-down" id="ea-resultado">—</div>
-              <div class="kpi-sub" id="ea-markup">Markup —</div>
+              <div class="kpi-sub">Markup —</div>
             </div>
             <div class="kpi">
               <div class="kpi-label">📱 Unidades</div>
@@ -364,12 +389,7 @@
           </div>
         </div>
 
-      </div><!-- /dashContent -->
-    </div><!-- /content -->
-  </div><!-- /main -->
-</div><!-- /app -->
-
-<script>
+      </div></div></div></div><script>
   (function() {
     var raw = sessionStorage.getItem("ml_user");
     if (!raw) { sessionStorage.setItem("ml_user", JSON.stringify({name:"demo", email:"demo@demo.com"})); raw = sessionStorage.getItem("ml_user"); }
