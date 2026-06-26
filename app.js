@@ -547,6 +547,12 @@ function buildDashboard() {
     set('kpi-metaTotal',    fmtRk(metaTotal));
     set('kpi-mesesAcima',   mesesAcima + ' de ' + metas.length);
     set('kpi-melhorMeta',   melhorMeta ? fmtM(melhorMeta.pct) : '—');
+    // Adiciona o mês abaixo do valor de melhor atingimento
+    const melhorMetaSub = document.querySelector('#kpi-melhorMeta + .kpi-sub, #kpi-melhorMeta ~ .kpi-sub');
+    if (melhorMeta) {
+      const el = document.getElementById('kpi-melhorMeta');
+      if (el && el.nextElementSibling) el.nextElementSibling.textContent = melhorMeta.mes;
+    }
     set('kpi-piorMeta',     piorMeta   ? fmtM(piorMeta.pct)   : '—');
     set('kpi-piorMetaMes',  piorMeta   ? piorMeta.mes          : '—');
 
