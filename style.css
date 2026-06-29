@@ -539,6 +539,36 @@ tr:hover td { background: var(--teal-light); }
   font-weight: 600;
 }
 
+/* ── MONTH FILTER BUTTONS ─────────────────────────────────────────────────── */
+.month-filter-btn {
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--muted2);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.month-filter-btn:hover {
+  background: var(--bg3);
+  color: var(--text);
+}
+.month-filter-btn.active {
+  background: var(--grad);
+  border-color: transparent;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+@media (max-width: 540px) {
+  #monthFilterWrap { gap: 4px; }
+  .month-filter-btn { padding: 4px 10px; font-size: 11px; }
+}
+
 /* ── RESPONSIVE ───────────────────────────────────────────────────────────── */
 @media (max-width: 960px) {
   .kpi-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }

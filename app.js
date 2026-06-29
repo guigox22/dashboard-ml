@@ -33,6 +33,7 @@ let estoqueAntigo = [];
 let entradasNovas = [];
 const charts      = {};
 let anoFiltro     = 'todos'; // 'todos' | 2025 | 2026
+let mesFiltro     = 'todos'; // 'todos' | 3 | 6 | 12
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
 function showPage(id) {
@@ -64,6 +65,17 @@ document.addEventListener('DOMContentLoaded', () => {
       anoFiltro = val === 'todos' ? 'todos' : parseInt(val);
       buildDashboard();
     });
+  });
+
+  // Filtro de meses
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('.month-filter-btn');
+    if (!btn) return;
+    document.querySelectorAll('.month-filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const val = btn.getAttribute('data-months');
+    mesFiltro = val === 'todos' ? 'todos' : parseInt(val);
+    buildDashboard();
   });
 
   const syncBtn = document.getElementById('syncBtn');
@@ -270,16 +282,17 @@ function processEntradaCSV(text) {
 
   const lines = text.split('\n').map(parseCSVLine);
 
-  const mesesPT = ['agosto','setembro','outubro','novembro','dezembro',
-                   'janeiro','fevereiro','março','abril','maio','junho','julho',
-                   'agosto','set','out','nov','dez','jan','fev','mar','abr','mai','jun','jul','ago'];
+  // Ordem cronológica dos meses para detectar virada de ano
+  const ordemMes = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
 
-  const isMonth = s => mesesPT.includes(
-    (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim()
-  );
+  const normMes = s => (s || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().trim().slice(0, 3);
 
-  // Detecta o ano atual: se mês é ago-dez → 2025, jan-jun → 2026
-  const mesesAno2025 = ['agosto','setembro','outubro','novembro','dezembro'];
+  const isMonth = s => ordemMes.includes(normMes(s));
+
+  let anoAtual   = null;
+  let idxAnterior = -1;
 
   for (let i = 0; i < lines.length; i++) {
     const r    = lines[i];
@@ -289,14 +302,25 @@ function processEntradaCSV(text) {
 
     if (!isMonth(colA)) continue;
 
-    const mesNorm = colA.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-    const ano = mesesAno2025.includes(mesNorm) ? 2025 : 2026;
-    const total = parseNum(colG);
+    const norm3    = normMes(colA);
+    const idxAtual = ordemMes.indexOf(norm3);
+
+    // Inicializa: primeiro mês encontrado → descobre ano pela posição (ago-dez = 2025)
+    if (anoAtual === null) {
+      anoAtual = idxAtual >= 7 ? 2025 : 2026; // ago(7)..dez(11) = 2025
+    } else if (idxAtual <= idxAnterior) {
+      // Voltou para um mês anterior ou igual → virou o ano
+      anoAtual++;
+    }
+
+    idxAnterior = idxAtual;
+
+    const total   = parseNum(colG);
     const okVenda = parseNum(colH);
 
     if (total != null) {
       entradasNovas.push({
-        ano,
+        ano: anoAtual,
         mes: capitalize(colA),
         qtd: total,
         okVenda: okVenda || 0
@@ -368,8 +392,15 @@ function buildEstoque() {
 function buildDashboard() {
   if (!dados.length) return;
 
-  const df = anoFiltro === 'todos' ? dados : dados.filter(d => d.ano === anoFiltro);
-  const ef = anoFiltro === 'todos' ? entradasNovas : entradasNovas.filter(e => e.ano === anoFiltro);
+  // Filtro por ano
+  let df = anoFiltro === 'todos' ? dados : dados.filter(d => d.ano === anoFiltro);
+  let ef = anoFiltro === 'todos' ? entradasNovas : entradasNovas.filter(e => e.ano === anoFiltro);
+
+  // Filtro por quantidade de meses (pega os N mais recentes)
+  if (mesFiltro !== 'todos') {
+    df = df.slice(-mesFiltro);
+    ef = ef.slice(-mesFiltro);
+  }
 
   if (!df.length) return;
 
@@ -418,13 +449,13 @@ function buildDashboard() {
     }
   }
 
-  // Gráfico de Entrada de Novos Produtos (Total + Ok para Venda)
+  // Gráfico de Entrada de Novos Produtos — página de entradas
   mkChart('chartEntradas', {
     type: 'bar',
     data: {
       labels: ef.map(e => e.mes.slice(0,3) + '/' + String(e.ano).slice(2)),
       datasets: [
-        { label: 'Total Entradas', data: ef.map(e => e.qtd),      backgroundColor: '#8b5cf6', borderRadius: 3 },
+        { label: 'Total Entradas', data: ef.map(e => e.qtd),          backgroundColor: '#8b5cf6', borderRadius: 3 },
         { label: 'Ok para Venda',  data: ef.map(e => e.okVenda || 0), backgroundColor: '#2ab5b5', borderRadius: 3 }
       ]
     },
@@ -432,7 +463,7 @@ function buildDashboard() {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: true, labels: { color: '#5a6a7a', font: { size: 11 } } } },
       scales: {
-        x: { ticks: { color: '#7a8a9a', font: { size: 10 }, maxRotation: 45 }, grid: { color: 'rgba(0,0,0,0.06)' } },
+        x: { ticks: { color: '#7a8a9a', font: { size: 10 }, maxRotation: 45, autoSkip: false }, grid: { color: 'rgba(0,0,0,0.06)' } },
         y: { ticks: { color: '#7a8a9a', font: { size: 10 }, callback: v => v + ' un' }, grid: { color: 'rgba(0,0,0,0.06)' } }
       }
     }
@@ -645,6 +676,72 @@ function buildDashboard() {
       }).join('');
     }
   }
+
+  // Tabela mensal na visão geral + resumo últimos 3 meses
+  const tabelaMensalVisao = document.getElementById('tabelaMensalVisao');
+  if (tabelaMensalVisao) {
+    const dfDesc = [...df].reverse(); // mais recente primeiro
+    const last3  = dfDesc.slice(0, 3);
+    const last3Keys = new Set(last3.map(d => d.ano + '-' + d.mes));
+
+    tabelaMensalVisao.innerHTML = dfDesc.map(d => {
+      const bc      = d.r >= 0 ? 'badge-green' : 'badge-red';
+      const mc      = (d.m * 100) >= 30 ? 'kpi-up' : 'kpi-down';
+      const isRecent = last3Keys.has(d.ano + '-' + d.mes);
+      const rowStyle = isRecent ? 'background:rgba(42,181,181,0.06);font-weight:500;' : '';
+      const recTag   = isRecent ? '<span style="font-size:9px;background:var(--teal);color:#fff;border-radius:10px;padding:1px 6px;margin-left:5px;font-weight:600;vertical-align:middle">RECENTE</span>' : '';
+      return `<tr style="${rowStyle}">
+        <td>${d.mes}${recTag}</td>
+        <td>${d.ano}</td>
+        <td>${fmtR(d.v)}</td>
+        <td><span class="badge ${bc}">${fmtR(d.r)}</span></td>
+        <td class="${mc}">${fmtM(d.m)}</td>
+        <td>${d.q}</td>
+        <td>${fmtR(d.tm)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Cards de resumo — últimos 3 meses
+  const resumo3El = document.getElementById('resumo3meses');
+  if (resumo3El) {
+    const dfDesc3 = [...df].reverse().slice(0, 3);
+    resumo3El.innerHTML = dfDesc3.map(d => {
+      const mc  = (d.m * 100) >= 30 ? '#1a7a45' : '#b91c1c';
+      const rc  = d.r >= 0 ? '#1a7a45' : '#b91c1c';
+      return `<div style="flex:1;min-width:180px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:.9rem 1.1rem;position:relative;overflow:hidden">
+        <div style="position:absolute;top:0;left:0;right:0;height:3px;background:var(--grad)"></div>
+        <div style="font-size:10px;font-weight:700;color:var(--muted2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">${d.mes} ${d.ano}</div>
+        <div style="font-size:18px;font-weight:700;font-family:'DM Mono',monospace;color:var(--text);letter-spacing:-.02em;margin-bottom:4px">${fmtR(d.v)}</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;margin-top:4px">
+          <span>Resultado: <strong style="color:${rc}">${fmtR(d.r)}</strong></span>
+          <span>Margem: <strong style="color:${mc}">${fmtM(d.m)}</strong></span>
+          <span>Qtd: <strong>${d.q} un</strong></span>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // Gráfico de entradas na visão geral — usa ef (já filtrado por ano e meses)
+  const efLabels = ef.map(e => e.mes.slice(0,3) + '/' + String(e.ano).slice(2));
+  mkChart('chartEntradasVisao', {
+    type: 'bar',
+    data: {
+      labels: efLabels,
+      datasets: [
+        { label: 'Total entradas', data: ef.map(e => e.qtd),           backgroundColor: '#8b5cf6', borderRadius: 3 },
+        { label: 'Ok para venda',  data: ef.map(e => e.okVenda || 0),  backgroundColor: '#2ab5b5', borderRadius: 3 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: true, labels: { color: '#5a6a7a', font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#7a8a9a', font: { size: 10 }, maxRotation: 45, autoSkip: false }, grid: { color: 'rgba(0,0,0,0.05)' } },
+        y: { ticks: { color: '#7a8a9a', font: { size: 10 }, callback: v => v + ' un' }, grid: { color: 'rgba(0,0,0,0.05)' } }
+      }
+    }
+  });
 
   buildEstoque();
 }
