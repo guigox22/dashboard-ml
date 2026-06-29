@@ -132,6 +132,7 @@
               <div class="legend">
                 <div class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span>Vendas</div>
                 <div class="legend-item"><span class="legend-dot" style="background:#ef4444"></span>Custos</div>
+                <div class="legend-item"><span class="legend-dot" style="background:#f59e0b;border-radius:50%"></span>% Meta</div>
               </div>
               <div class="chart-wrap">
                 <canvas id="chartVC" role="img" aria-label="Gráfico de barras vendas e custos mensais">Vendas vs Custos.</canvas>
@@ -148,37 +149,40 @@
             </div>
           </div>
 
-          <!-- Gráfico de Entrada de Produtos — abaixo dos gráficos principais -->
-          <div class="card">
-            <div class="card-title">Entrada de novos produtos</div>
-            <div class="legend">
-              <div class="legend-item"><span class="legend-dot" style="background:#8b5cf6"></span>Total entradas</div>
-              <div class="legend-item"><span class="legend-dot" style="background:#2ab5b5"></span>Ok para venda</div>
+          <!-- Gráfico de Entradas + Resumo por Ano lado a lado -->
+          <div class="grid-2">
+            <div class="card" style="margin-bottom:0">
+              <div class="card-title">Entrada de novos produtos</div>
+              <div class="legend">
+                <div class="legend-item"><span class="legend-dot" style="background:#8b5cf6"></span>Total entradas</div>
+                <div class="legend-item"><span class="legend-dot" style="background:#2ab5b5"></span>Ok para venda</div>
+              </div>
+              <div class="chart-wrap">
+                <canvas id="chartEntradasVisao" role="img" aria-label="Entrada de novos produtos na visão geral">Entradas.</canvas>
+              </div>
             </div>
-            <div class="chart-wrap med">
-              <canvas id="chartEntradasVisao" role="img" aria-label="Entrada de novos produtos na visão geral">Entradas.</canvas>
-            </div>
-          </div>
 
-          <div class="card">
-            <div class="card-title">Resumo por ano</div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr><th>Ano</th><th>Total vendas</th><th>Total resultado</th><th>Margem média</th><th>Meses</th></tr>
-                </thead>
-                <tbody id="tabelaAnos"></tbody>
-              </table>
-            </div>
-          </div>
+            <div class="card" style="margin-bottom:0;display:flex;flex-direction:column;gap:12px">
+              <div>
+                <div class="card-title">Resumo por ano</div>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr><th>Ano</th><th>Total vendas</th><th>Total resultado</th><th>Margem</th><th>Meses</th></tr>
+                    </thead>
+                    <tbody id="tabelaAnos"></tbody>
+                  </table>
+                </div>
+              </div>
 
-          <!-- Resumo últimos 3 meses — cards rápidos -->
-          <div class="card">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem">
-              <div class="card-title" style="margin-bottom:0">Últimos 3 meses</div>
-              <span style="font-size:10px;color:var(--teal);font-weight:600;letter-spacing:.04em">MAIS RECENTES</span>
+              <div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem">
+                  <div class="card-title" style="margin-bottom:0">Últimos 3 meses</div>
+                  <span style="font-size:10px;color:var(--teal);font-weight:600;letter-spacing:.04em">RECENTES</span>
+                </div>
+                <div id="resumo3meses" style="display:flex;flex-direction:column;gap:8px"></div>
+              </div>
             </div>
-            <div id="resumo3meses" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:1rem"></div>
           </div>
 
           <div class="card">

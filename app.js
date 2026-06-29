@@ -481,17 +481,104 @@ function buildDashboard() {
   const margemGeral = totalV > 0 ? (totalR / totalV * 100).toFixed(1) : '—';
   set('kpi-margemGeral', 'Margem ' + margemGeral + '%');
 
-  // ── chartVC: Vendas vs Custos ────────────────────────────────────────────
+  // ── chartVC: Vendas vs Custos + % Meta como rótulo nos pontos ──────────
+  // Cruza metas com df por índice relativo ao array completo de dados.
+  // metas e dados estão ambos em ordem cronológica — o índice de cada item
+  // de df dentro de `dados` aponta diretamente para a meta correspondente.
+  const pctMeta = df.map(d => {
+    const idxNoDados = dados.indexOf(d);
+    const meta = idxNoDados >= 0 ? metas[idxNoDados] : null;
+    return meta && meta.pct != null ? +(meta.pct * 100).toFixed(1) : null;
+  });
+
+  const maxVenda = Math.max(...df.map(d => d.v), 1);
+  // Posiciona a linha entre 55% e 90% da altura do eixo Y para ficar visível sobre as barras
+  const metaLine = pctMeta.map(v => v == null ? null : maxVenda * 0.55 + (Math.min(v, 160) / 160) * maxVenda * 0.35);
+  const hasMeta  = pctMeta.some(v => v !== null);
+
+  // Plugin nativo para desenhar rótulos de % nos pontos da linha
+  const pctLabelPlugin = {
+    id: 'pctLabels',
+    afterDatasetsDraw(chart) {
+      const ds = chart.data.datasets.find(d => d.label === '% Meta');
+      if (!ds) return;
+      const meta = chart.getDatasetMeta(chart.data.datasets.indexOf(ds));
+      const ctx2 = chart.ctx;
+      meta.data.forEach((point, i) => {
+        const v = pctMeta[i];
+        if (v == null) return;
+        const label  = v + '%';
+        const color  = v >= 100 ? '#166534' : v >= 70 ? '#92400e' : '#991b1b';
+        const bgCol  = v >= 100 ? 'rgba(34,197,94,0.18)' : v >= 70 ? 'rgba(245,158,11,0.18)' : 'rgba(239,68,68,0.14)';
+        const x = point.x;
+        const y = point.y - 14;
+        ctx2.save();
+        ctx2.font = 'bold 10px "DM Mono", monospace';
+        const tw = ctx2.measureText(label).width;
+        const pad = 4;
+        ctx2.fillStyle = bgCol;
+        ctx2.beginPath();
+        ctx2.roundRect(x - tw/2 - pad, y - 10, tw + pad*2, 14, 3);
+        ctx2.fill();
+        ctx2.fillStyle = color;
+        ctx2.textAlign = 'center';
+        ctx2.textBaseline = 'middle';
+        ctx2.fillText(label, x, y - 3);
+        ctx2.restore();
+      });
+    }
+  };
+
   mkChart('chartVC', {
     type: 'bar',
     data: {
       labels,
       datasets: [
-        { label: 'Vendas', data: df.map(d => d.v), backgroundColor: '#3b82f6', borderRadius: 3 },
-        { label: 'Custos', data: df.map(d => d.c), backgroundColor: '#ef4444', borderRadius: 3 }
+        { label: 'Vendas', data: df.map(d => d.v), backgroundColor: '#3b82f6', borderRadius: 3, order: 2 },
+        { label: 'Custos', data: df.map(d => d.c), backgroundColor: '#ef4444', borderRadius: 3, order: 3 },
+        ...(hasMeta ? [{
+          label: '% Meta',
+          data: metaLine,
+          type: 'line',
+          order: 1,
+          borderColor: '#f59e0b',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 5,
+          pointBackgroundColor: pctMeta.map(v =>
+            v == null ? 'transparent' : v >= 100 ? '#22c55e' : v >= 70 ? '#f59e0b' : '#ef4444'
+          ),
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2,
+          tension: 0.35,
+          fill: false
+        }] : [])
       ]
     },
-    options: { ...baseOpts(), plugins: { legend: { display: false } } }
+    plugins: hasMeta ? [pctLabelPlugin] : [],
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      layout: { padding: { top: 28 } },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              if (ctx.dataset.label === '% Meta') {
+                const v = pctMeta[ctx.dataIndex];
+                return v == null ? null : ` % Meta: ${v}%  ${v >= 100 ? '✅' : v >= 70 ? '⚠️' : '❌'}`;
+              }
+              return ` ${ctx.dataset.label}: ${fmtR(ctx.parsed.y)}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#7a8a9a', font: { size: 10 }, maxRotation: 45, autoSkip: false }, grid: { color: 'rgba(0,0,0,0.06)' } },
+        y: { ticks: { color: '#7a8a9a', font: { size: 10 }, callback: v => 'R$' + (v/1000).toFixed(0) + 'k' }, grid: { color: 'rgba(0,0,0,0.06)' } }
+      }
+    }
   });
 
   // ── chartRes: Resultado mensal ───────────────────────────────────────────
@@ -709,11 +796,13 @@ function buildDashboard() {
     resumo3El.innerHTML = dfDesc3.map(d => {
       const mc  = (d.m * 100) >= 30 ? '#1a7a45' : '#b91c1c';
       const rc  = d.r >= 0 ? '#1a7a45' : '#b91c1c';
-      return `<div style="flex:1;min-width:180px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:.9rem 1.1rem;position:relative;overflow:hidden">
-        <div style="position:absolute;top:0;left:0;right:0;height:3px;background:var(--grad)"></div>
-        <div style="font-size:10px;font-weight:700;color:var(--muted2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">${d.mes} ${d.ano}</div>
-        <div style="font-size:18px;font-weight:700;font-family:'DM Mono',monospace;color:var(--text);letter-spacing:-.02em;margin-bottom:4px">${fmtR(d.v)}</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;margin-top:4px">
+      return `<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.65rem 1rem;position:relative;overflow:hidden">
+        <div style="position:absolute;top:0;left:0;bottom:0;width:3px;background:var(--grad)"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <span style="font-size:10px;font-weight:700;color:var(--muted2);letter-spacing:.06em;text-transform:uppercase">${d.mes} ${d.ano}</span>
+          <span style="font-size:15px;font-weight:700;font-family:'DM Mono',monospace;color:var(--text)">${fmtR(d.v)}</span>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;margin-top:5px">
           <span>Resultado: <strong style="color:${rc}">${fmtR(d.r)}</strong></span>
           <span>Margem: <strong style="color:${mc}">${fmtM(d.m)}</strong></span>
           <span>Qtd: <strong>${d.q} un</strong></span>
