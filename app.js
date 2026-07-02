@@ -54,8 +54,20 @@ document.addEventListener('DOMContentLoaded', () => {
     item.addEventListener('click', () => {
       const page = item.getAttribute('data-page');
       if (page) showPage(page);
+      closeMobileMenu();
     });
   });
+
+  // Menu mobile (sidebar retrátil)
+  const menuToggle     = document.getElementById('menuToggle');
+  const sidebar        = document.getElementById('sidebar');
+  const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+  function openMobileMenu()  { sidebar.classList.add('open');  sidebarOverlay.classList.add('show'); }
+  function closeMobileMenu() { sidebar.classList.remove('open'); sidebarOverlay.classList.remove('show'); }
+
+  if (menuToggle) menuToggle.addEventListener('click', openMobileMenu);
+  if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeMobileMenu);
 
   document.querySelectorAll('.year-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -110,6 +122,54 @@ function parsePct(s) {
   const clean = String(s).replace('%', '').replace(',', '.').trim();
   const n = parseFloat(clean);
   return isNaN(n) ? null : n / 100;
+}
+
+function normMes3(s) {
+  return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().slice(0, 3);
+}
+
+// ── RESUMO DO MÊS CLICADO (Vela de Vendas vs Custos) ──────────────────────────
+// Aparece embutido dentro do próprio card do gráfico, no mesmo estilo visual
+// dos cards de "Últimos 3 meses".
+function openMonthModal(d, metaPct) {
+  const box = document.getElementById('mesClicadoResumo');
+  if (!box) return;
+
+  const mc = (d.m * 100) >= 30 ? '#1a7a45' : '#b91c1c';
+  const rc = d.r >= 0 ? '#1a7a45' : '#b91c1c';
+  const metaTxt   = metaPct != null ? fmtM(metaPct) : '—';
+  const metaColor = metaPct == null ? 'var(--muted2)' : metaPct >= 1 ? '#1a7a45' : metaPct >= 0.7 ? '#92400e' : '#b91c1c';
+
+  // Busca a entrada de produtos do mesmo mês/ano na planilha de entradas
+  const entrada = entradasNovas.find(e => e.ano === d.ano && normMes3(e.mes) === normMes3(d.mes));
+  const entradaTxt = entrada ? entrada.qtd.toLocaleString('pt-BR') + ' un' : '—';
+  const okVendaTxt = entrada ? (entrada.okVenda || 0).toLocaleString('pt-BR') + ' un' : '—';
+
+  box.innerHTML = `
+    <button class="mcr-close" id="mcrClose" aria-label="Fechar resumo">✕</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-right:26px">
+      <span class="mcr-mes">${d.mes} ${d.ano}</span>
+      <span class="mcr-valor">${fmtR(d.v)}</span>
+    </div>
+    <div class="mcr-stats">
+      <div class="mcr-stat"><span class="mcr-stat-label">Resultado</span><span class="mcr-stat-value" style="color:${rc}">${fmtR(d.r)}</span></div>
+      <div class="mcr-stat"><span class="mcr-stat-label">Margem</span><span class="mcr-stat-value" style="color:${mc}">${fmtM(d.m)}</span></div>
+      <div class="mcr-stat"><span class="mcr-stat-label">Qtd vendida</span><span class="mcr-stat-value">${d.q} un</span></div>
+      <div class="mcr-stat"><span class="mcr-stat-label">Ticket médio</span><span class="mcr-stat-value">${fmtR(d.tm)}</span></div>
+      <div class="mcr-stat"><span class="mcr-stat-label">% Meta</span><span class="mcr-stat-value" style="color:${metaColor}">${metaTxt}</span></div>
+      <div class="mcr-stat"><span class="mcr-stat-label">Produtos em estoque</span><span class="mcr-stat-value" style="color:#8b5cf6">${entradaTxt}</span></div>
+      <div class="mcr-stat"><span class="mcr-stat-label">Ok p/ venda</span><span class="mcr-stat-value" style="color:#2ab5b5">${okVendaTxt}</span></div>
+    </div>
+  `;
+  box.style.display = 'block';
+
+  const closeBtn = document.getElementById('mcrClose');
+  if (closeBtn) closeBtn.addEventListener('click', closeMonthModal);
+}
+
+function closeMonthModal() {
+  const box = document.getElementById('mesClicadoResumo');
+  if (box) { box.style.display = 'none'; box.innerHTML = ''; }
 }
 
 async function fetchCSV(url) {
@@ -392,6 +452,8 @@ function buildEstoque() {
 function buildDashboard() {
   if (!dados.length) return;
 
+  closeMonthModal(); // esconde resumo de mês clicado ao trocar filtros/recarregar
+
   // Filtro por ano
   let df = anoFiltro === 'todos' ? dados : dados.filter(d => d.ano === anoFiltro);
   let ef = anoFiltro === 'todos' ? entradasNovas : entradasNovas.filter(e => e.ano === anoFiltro);
@@ -560,6 +622,21 @@ function buildDashboard() {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       layout: { padding: { top: 28 } },
+      onHover: (evt, elements) => {
+        evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+      },
+      onClick: (evt, elements, chart) => {
+        // Detecta o mês clicado pela posição X, mesmo que o clique caia
+        // levemente fora da barra exata (vendas ou custos do mesmo mês).
+        const points = chart.getElementsAtEventForMode(evt, 'index', { intersect: true }, false);
+        if (!points.length) return;
+        const idx = points[0].index;
+        const d   = df[idx];
+        if (!d) return;
+        const idxNoDados = dados.indexOf(d);
+        const meta = idxNoDados >= 0 ? metas[idxNoDados] : null;
+        openMonthModal(d, meta ? meta.pct : null);
+      },
       plugins: {
         legend: { display: false },
         tooltip: {

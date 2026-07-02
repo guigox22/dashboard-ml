@@ -275,6 +275,31 @@ html, body {
 }
 #btnLogout:hover { color: var(--text); border-color: var(--border2); background: var(--bg3); }
 
+/* ── MENU TOGGLE (mobile) ─────────────────────────────────────────────────── */
+.menu-toggle {
+  display: none;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 40;
+}
+.sidebar-overlay.show { display: block; }
+
 /* ── CONTENT AREA ─────────────────────────────────────────────────────────── */
 .content {
   flex: 1;
@@ -569,13 +594,123 @@ tr:hover td { background: var(--teal-light); }
   .month-filter-btn { padding: 4px 10px; font-size: 11px; }
 }
 
+/* ── RESUMO DO MÊS CLICADO (Velas Vendas vs Custos) ───────────────────────── */
+.mes-clicado-resumo {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--teal);
+  border-radius: var(--radius-sm);
+  padding: 1rem 1.15rem;
+  margin-bottom: 14px;
+  position: relative;
+  animation: fadeIn 0.18s ease;
+}
+.mcr-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mcr-close:hover { background: var(--bg4); color: var(--text); }
+
+.mcr-mes {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted2);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.mcr-valor {
+  font-size: 24px;
+  font-weight: 800;
+  font-family: 'DM Mono', monospace;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.mcr-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.mcr-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.8rem;
+}
+.mcr-stat-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.mcr-stat-value {
+  font-size: 17px;
+  font-weight: 700;
+  font-family: 'DM Mono', monospace;
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .mcr-stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .mcr-valor { font-size: 20px; }
+}
+
 /* ── RESPONSIVE ───────────────────────────────────────────────────────────── */
 @media (max-width: 960px) {
   .kpi-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .grid-2   { grid-template-columns: 1fr; }
 }
+
+@media (max-width: 860px) {
+  .menu-toggle { display: flex; }
+
+  :root { --sidebar-w: 250px; }
+  .sidebar {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 0 0 30px rgba(0,0,0,0.35);
+  }
+  .sidebar.open { transform: translateX(0); }
+}
+
+@media (max-width: 720px) {
+  .topbar { padding: 0 1rem; flex-wrap: wrap; height: auto; min-height: var(--topbar-h); gap: 8px 12px; }
+  .topbar-sub { display: none; }
+  .topbar-actions { flex-wrap: wrap; gap: 8px !important; width: 100%; justify-content: flex-start; }
+  #userEmailTop { display: none; }
+  .content { padding: 1rem; }
+}
+
 @media (max-width: 640px) {
-  :root { --sidebar-w: 0px; }
-  .sidebar { display: none; }
   .kpi-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 480px) {
+  .kpi-grid { grid-template-columns: 1fr; }
+  .kpi-value { font-size: 19px; }
+  .card { padding: 1rem; }
+  #yearFilter { order: 1; }
+  .status { order: 3; }
+  #userBadge { order: 4; }
+  #btnLogout { order: 5; }
 }
