@@ -373,6 +373,12 @@ html, body {
 .kpi-down  { color: var(--red) !important; }
 .kpi-warn  { color: var(--amber) !important; }
 
+/* Valores completos (não abreviados) — ajusta a fonte para caber sem quebrar o card */
+.kpi-value-flex {
+  font-size: clamp(15px, 1.7vw, 22px);
+  white-space: nowrap;
+}
+
 /* KPI destaque (gradiente) */
 .kpi.kpi-accent {
   background: var(--grad);
@@ -708,6 +714,7 @@ tr:hover td { background: var(--teal-light); }
 @media (max-width: 480px) {
   .kpi-grid { grid-template-columns: 1fr; }
   .kpi-value { font-size: 19px; }
+  .kpi-value-flex { white-space: normal; font-size: 18px; }
   .card { padding: 1rem; }
   #yearFilter { order: 1; }
   .status { order: 3; }

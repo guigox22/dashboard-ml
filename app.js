@@ -99,6 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 function fmtR(v)  { return v == null || isNaN(v) ? '—' : 'R$ ' + Math.round(v).toLocaleString('pt-BR'); }
 function fmtRk(v) { return v == null || isNaN(v) ? '—' : 'R$ ' + (v / 1000).toFixed(0) + 'k'; }
+function fmtRFull(v) { return v == null || isNaN(v) ? '—' : 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function fmtM(v)  { return v == null || isNaN(v) ? '—' : (v * 100).toFixed(1) + '%'; }
 function set(id, val) {
   const el = document.getElementById(id);
@@ -535,8 +536,8 @@ function buildDashboard() {
   const totalV = df.reduce((a, d) => a + d.v, 0);
   const totalR = df.reduce((a, d) => a + d.r, 0);
   const totalQ = df.reduce((a, d) => a + d.q, 0);
-  set('kpi-totalVendas', fmtRk(totalV));
-  set('kpi-resultado',   fmtRk(totalR));
+  set('kpi-totalVendas', fmtRFull(totalV));
+  set('kpi-resultado',   fmtRFull(totalR));
   set('kpi-qtd',         totalQ.toLocaleString('pt-BR'));
   set('kpi-ticket',      fmtR(totalV / totalQ));
 
