@@ -182,14 +182,32 @@ function categoriaOcorrencia(tipo) {
   return 'Ocorrência';
 }
 
-// Interpreta o texto de RESOLUÇÃO para saber em que estágio a devolução está:
+function stripAccents(s) {
+  return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+// Interpreta o texto de RESOLUÇÃO para saber em que estágio a devolução está.
 // "Solicitação de devolução do aparelho." → pedido a caminho, ainda não chegou.
 // "DEVOLUÇÃO COM REEMBOLSO" → já chegou e o dinheiro já foi devolvido ao cliente.
+// Quando o texto tem "|", cada trecho é um complemento adicionado depois — o
+// status atual é sempre o do ÚLTIMO trecho (conforme o caso foi evoluindo).
 function statusResolucao(o) {
-  const r = (o.resolucao || '').toUpperCase();
-  if (r.includes('REEMBOLSO')) return { key: 'reembolsado', label: 'Reembolsado', cls: 'oc-status-ok' };
-  if (r.includes('SOLICITA')) return { key: 'pendente', label: 'Aguardando chegar', cls: 'oc-status-pendente' };
-  if (!o.resolucao) return { key: 'semdados', label: 'Sem resolução', cls: 'oc-status-neutro' };
+  const raw = (o.resolucao || '').trim();
+  if (!raw) return { key: 'semdados', label: 'Sem resolução', cls: 'oc-status-neutro' };
+
+  const fullNorm = stripAccents(raw).toUpperCase();
+  // Reembolso é sempre um estágio final: se aparecer em qualquer parte do
+  // histórico, o caso já foi encerrado com o dinheiro devolvido.
+  if (fullNorm.includes('REEMBOLSO')) {
+    return { key: 'reembolsado', label: 'Reembolsado', cls: 'oc-status-ok' };
+  }
+
+  const partes = raw.split('|').map(s => s.trim()).filter(Boolean);
+  const ultimaNorm = stripAccents(partes[partes.length - 1] || '').toUpperCase();
+
+  if (ultimaNorm.includes('SOLICITACAO DE DEVOLUCAO') && !ultimaNorm.includes('CANCELAD')) {
+    return { key: 'pendente', label: 'Aguardando chegar', cls: 'oc-status-pendente' };
+  }
   return { key: 'outro', label: 'Outra resolução', cls: 'oc-status-neutro' };
 }
 
