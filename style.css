@@ -721,3 +721,64 @@ tr:hover td { background: var(--teal-light); }
   #userBadge { order: 4; }
   #btnLogout { order: 5; }
 }
+
+/* ── OCORRÊNCIAS E DEVOLUÇÃO ─────────────────────────────────────────────── */
+.oc-badge {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.oc-badge-devolucao { background: rgba(239,68,68,0.12); color: #b91c1c; }
+.oc-badge-erro      { background: rgba(245,158,11,0.14); color: #92400e; }
+.oc-badge-ocorrencia{ background: rgba(59,130,246,0.12); color: #1d4ed8; }
+
+.oc-status {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.oc-status-ok       { background: rgba(34,197,94,0.14); color: #1a7a45; }
+.oc-status-pendente { background: rgba(245,158,11,0.14); color: #92400e; }
+.oc-status-neutro   { background: var(--bg4); color: var(--muted2); }
+
+#tabelaOcorrencias tr.oc-row { cursor: pointer; }
+#tabelaOcorrencias tr.oc-row:hover { background: var(--bg3); }
+#tabelaOcorrencias tr.oc-row.open { background: var(--bg3); }
+
+.oc-detail-cell { padding: 0 !important; }
+.oc-detail {
+  background: var(--bg3);
+  border-left: 4px solid var(--red, #ef4444);
+  padding: 0.9rem 1.1rem;
+  animation: fadeIn 0.15s ease;
+}
+.oc-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.oc-detail-item { display: flex; flex-direction: column; gap: 2px; }
+.oc-detail-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.oc-detail-value { font-size: 13px; font-weight: 600; color: var(--text); }
+.oc-detail-full { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border2); }
+.oc-detail-full .oc-detail-label { margin-bottom: 3px; }
+.oc-detail-full .oc-detail-value { font-weight: 500; font-size: 12.5px; line-height: 1.5; }
+
+@media (max-width: 640px) {
+  .oc-detail-grid { grid-template-columns: 1fr 1fr; }
+}

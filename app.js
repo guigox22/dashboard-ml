@@ -13,6 +13,7 @@ const GID_NUEVOS_PRODUCTOS   = '1121502030';
 const CSV_URL        = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID_DASHBOARD}`;
 const CSV_ESTOQUE    = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID_ESTOQUE}`;
 const CSV_ENTRADAS   = `https://docs.google.com/spreadsheets/d/e/2PACX-1vRfGWqVSMfpdACAxc80A9aR34U_F8imvSnqWo98qP1eV7To00ZUVQQR__uORP_h2ePXm13ff9Sjyuft/pub?output=csv`;
+const CSV_OCORRENCIAS = `https://docs.google.com/spreadsheets/d/e/2PACX-1vSE9KMhZGyTdIQf5PBe55e4rmpKQwqrNVwiyHAKdPCe186vnyA9jSifWC74-RQz9Q/pub?gid=868263465&single=true&output=csv`;
 
 // ── PAGE TITLES ───────────────────────────────────────────────────────────────
 const PAGE_TITLES = {
@@ -23,6 +24,7 @@ const PAGE_TITLES = {
   margem:   'Análise de Margem',
   quinzena: 'Primeira vs Segunda Quinzena',
   estoque:  'Estoque Antigo · Vendas com Prejuízo',
+  ocorrencias: 'Ocorrências e Devolução',
 };
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
@@ -31,6 +33,8 @@ let metas         = [];
 let quinzenas     = [];
 let estoqueAntigo = [];
 let entradasNovas = [];
+let ocorrencias   = [];
+let ocFiltroTipo  = 'todos'; // 'todos' | 'Devolução' | 'Erro' | 'Ocorrência'
 const charts      = {};
 let anoFiltro     = 'todos'; // 'todos' | 2025 | 2026
 let mesFiltro     = 'todos'; // 'todos' | 3 | 6 | 12
@@ -76,6 +80,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const val = btn.getAttribute('data-year');
       anoFiltro = val === 'todos' ? 'todos' : parseInt(val);
       buildDashboard();
+      renderOcorrenciasPage();
+      renderDevolucoesVisao();
     });
   });
 
@@ -83,17 +89,38 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click', e => {
     const btn = e.target.closest('.month-filter-btn');
     if (!btn) return;
-    document.querySelectorAll('.month-filter-btn').forEach(b => b.classList.remove('active'));
+    if (btn.hasAttribute('data-oc-tipo')) return; // tratado abaixo
+    document.querySelectorAll('.month-filter-btn[data-months]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     const val = btn.getAttribute('data-months');
     mesFiltro = val === 'todos' ? 'todos' : parseInt(val);
     buildDashboard();
   });
 
+  // Filtro de tipo de ocorrência (página Ocorrências e Devolução)
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('[data-oc-tipo]');
+    if (!btn) return;
+    document.querySelectorAll('[data-oc-tipo]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    ocFiltroTipo = btn.getAttribute('data-oc-tipo');
+    renderOcorrenciasPage();
+  });
+
+  const verTodasBtn = document.getElementById('verTodasDevolucoes');
+  if (verTodasBtn) verTodasBtn.addEventListener('click', () => {
+    showPage('ocorrencias');
+    const btnDev = document.querySelector('[data-oc-tipo="Devolução"]');
+    if (btnDev) btnDev.click();
+  });
+
   const syncBtn = document.getElementById('syncBtn');
   if (syncBtn) syncBtn.addEventListener('click', loadData);
 
   loadData();
+
+  // Atualiza os dados sozinho a cada 3 minutos, sem precisar clicar em "Sincronizar"
+  setInterval(() => loadData({ silent: true }), 3 * 60 * 1000);
 });
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
@@ -127,6 +154,301 @@ function parsePct(s) {
 
 function normMes3(s) {
   return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().slice(0, 3);
+}
+
+const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+function parseDateBR(s) {
+  if (!s) return null;
+  s = String(s).trim();
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (m) {
+    let d = +m[1], mo = +m[2], y = +m[3];
+    if (y < 100) y += 2000;
+    return { date: new Date(y, mo - 1, d), ano: y, mesIdx: mo - 1 };
+  }
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) {
+    let y = +m[1], mo = +m[2], d = +m[3];
+    return { date: new Date(y, mo - 1, d), ano: y, mesIdx: mo - 1 };
+  }
+  return null;
+}
+
+function categoriaOcorrencia(tipo) {
+  const t = (tipo || '').toUpperCase();
+  if (t.includes('DEVOLU') || t.includes('BOUNCE') || t.includes('CANCEL')) return 'Devolução';
+  if (t.includes('ERRO')) return 'Erro';
+  return 'Ocorrência';
+}
+
+// Interpreta o texto de RESOLUÇÃO para saber em que estágio a devolução está:
+// "Solicitação de devolução do aparelho." → pedido a caminho, ainda não chegou.
+// "DEVOLUÇÃO COM REEMBOLSO" → já chegou e o dinheiro já foi devolvido ao cliente.
+function statusResolucao(o) {
+  const r = (o.resolucao || '').toUpperCase();
+  if (r.includes('REEMBOLSO')) return { key: 'reembolsado', label: 'Reembolsado', cls: 'oc-status-ok' };
+  if (r.includes('SOLICITA')) return { key: 'pendente', label: 'Aguardando chegar', cls: 'oc-status-pendente' };
+  if (!o.resolucao) return { key: 'semdados', label: 'Sem resolução', cls: 'oc-status-neutro' };
+  return { key: 'outro', label: 'Outra resolução', cls: 'oc-status-neutro' };
+}
+
+function processOcorrenciasCSV(text) {
+  ocorrencias = [];
+  const lines = text.split('\n').map(parseCSVLine);
+  for (let i = 1; i < lines.length; i++) {
+    const r = lines[i];
+    if (!r || r.length < 3) continue;
+    const venda = (r[0] || '').trim();
+    const tipo  = (r[1] || '').trim();
+    if (!venda && !tipo) continue;
+    const dt = parseDateBR(r[2]);
+    if (!dt) continue;
+    ocorrencias.push({
+      venda,
+      tipo,
+      categoria: categoriaOcorrencia(tipo),
+      data: dt.date,
+      ano: dt.ano,
+      mesIdx: dt.mesIdx,
+      mes: MESES_PT[dt.mesIdx],
+      imei: (r[3] || '').trim(),
+      os: (r[4] || '').trim(),
+      produto: (r[5] || '').trim(),
+      defeito: (r[6] || '').trim(),
+      custoPrimeiro: parseNum(r[7]),
+      ocorrencia1: (r[8] || '').trim(),
+      custo1: parseNum(r[9]),
+      ocorrencia2: (r[10] || '').trim(),
+      custo2: parseNum(r[11]),
+      resolucao: (r[12] || '').trim(),
+      precoVenda: parseNum(r[13]),
+      freteDevolucao: parseNum(r[14]),
+    });
+  }
+  ocorrencias.sort((a, b) => b.data - a.data);
+}
+
+function badgeOcorrencia(categoria) {
+  const cls = categoria === 'Devolução' ? 'oc-badge-devolucao' : categoria === 'Erro' ? 'oc-badge-erro' : 'oc-badge-ocorrencia';
+  return `<span class="oc-badge ${cls}">${categoria}</span>`;
+}
+
+// ── PÁGINA: OCORRÊNCIAS E DEVOLUÇÃO ────────────────────────────────────────────
+function renderOcorrenciasPage() {
+  const tbody = document.getElementById('tabelaOcorrencias');
+  if (!tbody) return; // ainda não carregou / página não existe
+
+  let df = anoFiltro === 'todos' ? ocorrencias : ocorrencias.filter(o => o.ano === anoFiltro);
+  if (ocFiltroTipo !== 'todos') df = df.filter(o => o.categoria === ocFiltroTipo);
+
+  const totalGeral   = (anoFiltro === 'todos' ? ocorrencias : ocorrencias.filter(o => o.ano === anoFiltro)).length;
+  const devolucoes   = (anoFiltro === 'todos' ? ocorrencias : ocorrencias.filter(o => o.ano === anoFiltro)).filter(o => o.categoria === 'Devolução');
+  const valorDevolvido = devolucoes.reduce((a, o) => a + (o.precoVenda || 0), 0);
+  const freteTotal     = devolucoes.reduce((a, o) => a + (o.freteDevolucao || 0), 0);
+  const pctDev = totalGeral > 0 ? (devolucoes.length / totalGeral * 100).toFixed(0) + '% do total' : '—';
+
+  const pendentes    = devolucoes.filter(o => statusResolucao(o).key === 'pendente');
+  const reembolsados = devolucoes.filter(o => statusResolucao(o).key === 'reembolsado');
+
+  set('oc-total', totalGeral.toLocaleString('pt-BR'));
+  set('oc-devolucoes', devolucoes.length.toLocaleString('pt-BR'));
+  set('oc-devolucoesPct', pctDev);
+  set('oc-valorDevolvido', fmtR(valorDevolvido));
+  set('oc-frete', fmtR(freteTotal));
+  set('oc-pendentes', pendentes.length.toLocaleString('pt-BR'));
+  set('oc-reembolsados', reembolsados.length.toLocaleString('pt-BR'));
+
+  // Impacto nas vendas: desconta apenas devoluções já reembolsadas (confirmadas)
+  const dfVendas = anoFiltro === 'todos' ? dados : dados.filter(d => d.ano === anoFiltro);
+  const vendasBrutas   = dfVendas.reduce((a, d) => a + d.v, 0);
+  const unidVendidas    = dfVendas.reduce((a, d) => a + d.q, 0);
+  const valorReembolsado = reembolsados.reduce((a, o) => a + (o.precoVenda || 0), 0);
+  set('oc-vendasBrutas',   fmtR(vendasBrutas));
+  set('oc-devReembolsadas', '−' + fmtR(valorReembolsado));
+  set('oc-vendasLiquidas',  fmtR(vendasBrutas - valorReembolsado));
+  set('oc-unidVendidas',    unidVendidas.toLocaleString('pt-BR') + ' un');
+  set('oc-unidDevolvidas',  '−' + reembolsados.length.toLocaleString('pt-BR') + ' un');
+  set('oc-unidLiquidas',    (unidVendidas - reembolsados.length).toLocaleString('pt-BR') + ' un');
+
+  // Tabela
+  tbody.innerHTML = df.map((o, idx) => {
+    const st = statusResolucao(o);
+    return `
+    <tr class="oc-row" data-idx="${idx}">
+      <td>${o.data.toLocaleDateString('pt-BR')}</td>
+      <td>${o.produto || '—'}</td>
+      <td>${o.imei || '—'}</td>
+      <td>${badgeOcorrencia(o.categoria)}</td>
+      <td><span class="oc-status ${st.cls}">${st.label}</span></td>
+      <td>${o.precoVenda != null ? fmtR(o.precoVenda) : '—'}</td>
+    </tr>
+    <tr class="oc-detail-row" data-detail-idx="${idx}" style="display:none">
+      <td colspan="6" class="oc-detail-cell"></td>
+    </tr>
+  `;
+  }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--muted)">Nenhuma ocorrência encontrada para esse filtro.</td></tr>';
+
+  tbody.querySelectorAll('.oc-row').forEach(tr => {
+    tr.addEventListener('click', () => {
+      const idx = tr.getAttribute('data-idx');
+      const detailRow = tbody.querySelector(`.oc-detail-row[data-detail-idx="${idx}"]`);
+      const isOpen = tr.classList.contains('open');
+
+      // Fecha qualquer outro detalhe aberto
+      tbody.querySelectorAll('.oc-row.open').forEach(o => o.classList.remove('open'));
+      tbody.querySelectorAll('.oc-detail-row').forEach(d => { if (d !== detailRow) d.style.display = 'none'; });
+
+      if (isOpen) { detailRow.style.display = 'none'; return; }
+
+      tr.classList.add('open');
+      const o = df[idx];
+      const st = statusResolucao(o);
+      const rc = (o.custoPrimeiro || o.custo1 || o.custo2) ? '#b91c1c' : 'var(--text)';
+      detailRow.querySelector('.oc-detail-cell').innerHTML = `
+        <div class="oc-detail">
+          <div class="oc-detail-grid">
+            <div class="oc-detail-item"><span class="oc-detail-label">Venda</span><span class="oc-detail-value">${o.venda || '—'}</span></div>
+            <div class="oc-detail-item"><span class="oc-detail-label">OS do pedido</span><span class="oc-detail-value">${o.os || '—'}</span></div>
+            <div class="oc-detail-item"><span class="oc-detail-label">IMEI</span><span class="oc-detail-value">${o.imei || '—'}</span></div>
+            <div class="oc-detail-item"><span class="oc-detail-label">Status</span><span class="oc-detail-value"><span class="oc-status ${st.cls}">${st.label}</span></span></div>
+            <div class="oc-detail-item"><span class="oc-detail-label">Custo 1º aparelho</span><span class="oc-detail-value" style="color:${rc}">${o.custoPrimeiro != null ? fmtR(o.custoPrimeiro) : '—'}</span></div>
+            <div class="oc-detail-item"><span class="oc-detail-label">Custo ocorrência 1</span><span class="oc-detail-value">${o.custo1 != null ? fmtR(o.custo1) : '—'}</span></div>
+            <div class="oc-detail-item"><span class="oc-detail-label">Custo ocorrência 2</span><span class="oc-detail-value">${o.custo2 != null ? fmtR(o.custo2) : '—'}</span></div>
+            <div class="oc-detail-item"><span class="oc-detail-label">Preço de venda</span><span class="oc-detail-value">${o.precoVenda != null ? fmtR(o.precoVenda) : '—'}</span></div>
+            <div class="oc-detail-item"><span class="oc-detail-label">Frete devolução</span><span class="oc-detail-value">${o.freteDevolucao != null ? fmtR(o.freteDevolucao) : '—'}</span></div>
+          </div>
+          <div class="oc-detail-full">
+            <div class="oc-detail-label">Defeito relatado</div>
+            <div class="oc-detail-value">${o.defeito || '—'}</div>
+          </div>
+          <div class="oc-detail-full">
+            <div class="oc-detail-label">Resolução</div>
+            <div class="oc-detail-value">${o.resolucao || '—'}</div>
+          </div>
+          ${o.ocorrencia1 ? `<div class="oc-detail-full"><div class="oc-detail-label">Ocorrência adicional 1</div><div class="oc-detail-value">${o.ocorrencia1}</div></div>` : ''}
+          ${o.ocorrencia2 ? `<div class="oc-detail-full"><div class="oc-detail-label">Ocorrência adicional 2</div><div class="oc-detail-value">${o.ocorrencia2}</div></div>` : ''}
+        </div>`;
+      detailRow.style.display = '';
+    });
+  });
+
+  // Gráfico: ocorrências por mês, empilhado por categoria
+  const chaves = [...new Set(df.map(o => o.ano + '-' + String(o.mesIdx).padStart(2, '0')))].sort();
+  const labels = chaves.map(k => { const [y, m] = k.split('-'); return MESES_PT[+m].slice(0, 3) + '/' + String(y).slice(2); });
+  const porCategoria = cat => chaves.map(k => df.filter(o => (o.ano + '-' + String(o.mesIdx).padStart(2, '0')) === k && o.categoria === cat).length);
+
+  mkChart('chartOcorrencias', {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Devolução',   data: porCategoria('Devolução'),  backgroundColor: '#ef4444', borderRadius: 4 },
+        { label: 'Erro',        data: porCategoria('Erro'),       backgroundColor: '#f59e0b', borderRadius: 4 },
+        { label: 'Ocorrência',  data: porCategoria('Ocorrência'), backgroundColor: '#3b82f6', borderRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { stacked: true, ticks: { color: '#7a8a9a', font: { size: 10 } }, grid: { display: false } },
+        y: { stacked: true, ticks: { color: '#7a8a9a', font: { size: 10 }, precision: 0 }, grid: { color: 'rgba(0,0,0,0.06)' } }
+      }
+    }
+  });
+}
+
+// ── CARD DE DEVOLUÇÕES NA VISÃO GERAL ──────────────────────────────────────────
+function renderDevolucoesVisao() {
+  const chartEl = document.getElementById('chartDevolucoes');
+  if (!chartEl) return;
+
+  const devBox = document.getElementById('devClicadoResumo');
+  if (devBox) { devBox.style.display = 'none'; devBox.innerHTML = ''; }
+
+  const df = (anoFiltro === 'todos' ? ocorrencias : ocorrencias.filter(o => o.ano === anoFiltro))
+    .filter(o => o.categoria === 'Devolução');
+
+  const chaves = [...new Set(df.map(o => o.ano + '-' + String(o.mesIdx).padStart(2, '0')))].sort();
+  const labels = chaves.map(k => { const [y, m] = k.split('-'); return MESES_PT[+m].slice(0, 3) + '/' + String(y).slice(2); });
+  const qtds   = chaves.map(k => df.filter(o => (o.ano + '-' + String(o.mesIdx).padStart(2, '0')) === k).length);
+
+  mkChart('chartDevolucoes', {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Devolvidos', data: qtds, backgroundColor: '#ef4444', borderRadius: 4, maxBarThickness: 46 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      onHover: (evt, elements) => { evt.native.target.style.cursor = elements.length ? 'pointer' : 'default'; },
+      onClick: (evt, elements, chart) => {
+        const points = chart.getElementsAtEventForMode(evt, 'index', { intersect: true }, false);
+        if (!points.length) return;
+        const k = chaves[points[0].index];
+        if (k) openDevMonthSummary(k);
+      },
+      scales: {
+        x: { ticks: { color: '#7a8a9a', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: '#7a8a9a', font: { size: 10 }, precision: 0, callback: v => v + ' un' }, grid: { color: 'rgba(0,0,0,0.06)' } }
+      }
+    }
+  });
+
+  const ultimasEl = document.getElementById('ultimasDevolucoes');
+  if (ultimasEl) {
+    const ultimas = [...df].sort((a, b) => b.data - a.data).slice(0, 3);
+    ultimasEl.innerHTML = ultimas.length ? ultimas.map(o => `
+      <div style="background:var(--bg3);border:1px solid var(--border);border-left:3px solid #ef4444;border-radius:var(--radius-sm);padding:.6rem .85rem">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:700;color:var(--text)">${o.produto || 'Produto não informado'}</span>
+          <span style="font-size:12px;font-weight:700;font-family:'DM Mono',monospace;color:#b91c1c">${o.precoVenda != null ? fmtR(o.precoVenda) : '—'}</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted2);margin-top:3px">${o.data.toLocaleDateString('pt-BR')} · ${o.tipo}</div>
+      </div>
+    `).join('') : '<div style="font-size:12px;color:var(--muted)">Nenhuma devolução registrada.</div>';
+  }
+}
+
+// Clique numa barra do gráfico "Devoluções por mês": mostra quanto foi vendido
+// naquele mês, quantos aparelhos voltaram e em que situação cada devolução está
+// (já reembolsado ou ainda aguardando chegar).
+function openDevMonthSummary(chave) {
+  const box = document.getElementById('devClicadoResumo');
+  if (!box) return;
+  const [anoStr, mesStr] = chave.split('-');
+  const ano = +anoStr, mesIdx = +mesStr;
+  const mesNome = MESES_PT[mesIdx];
+
+  const vendasMes = dados.find(d => d.ano === ano && normMes3(d.mes) === normMes3(mesNome));
+  const devMes = ocorrencias.filter(o => o.categoria === 'Devolução' && o.ano === ano && o.mesIdx === mesIdx);
+  const pendentesMes    = devMes.filter(o => statusResolucao(o).key === 'pendente');
+  const reembolsadosMes = devMes.filter(o => statusResolucao(o).key === 'reembolsado');
+  const outrosMes       = devMes.filter(o => !['pendente','reembolsado'].includes(statusResolucao(o).key));
+  const valorReembolsadoMes = reembolsadosMes.reduce((a, o) => a + (o.precoVenda || 0), 0);
+
+  const qtdVendida = vendasMes ? vendasMes.q : null;
+  const qtdLiquida = qtdVendida != null ? qtdVendida - reembolsadosMes.length : null;
+
+  box.innerHTML = `
+    <button class="mcr-close" id="devMcrClose" aria-label="Fechar resumo">✕</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-right:26px">
+      <span class="mcr-mes">${mesNome} ${ano}</span>
+      <span class="mcr-valor" style="color:#b91c1c">${devMes.length} devolução(ões)</span>
+    </div>
+    <div class="mcr-stats">
+      <div class="mcr-stat"><span class="mcr-stat-label">Vendido no mês</span><span class="mcr-stat-value">${qtdVendida != null ? qtdVendida + ' un' : '—'}</span></div>
+      <div class="mcr-stat"><span class="mcr-stat-label">Voltaram (total)</span><span class="mcr-stat-value" style="color:#b91c1c">${devMes.length} un</span></div>
+      <div class="mcr-stat"><span class="mcr-stat-label">Vendas líquidas</span><span class="mcr-stat-value" style="color:#1a7a45">${qtdLiquida != null ? qtdLiquida + ' un' : '—'}</span></div>
+      <div class="mcr-stat"><span class="mcr-stat-label">⏳ Aguardando chegar</span><span class="mcr-stat-value" style="color:#92400e">${pendentesMes.length} un</span></div>
+      <div class="mcr-stat"><span class="mcr-stat-label">✅ Já reembolsado</span><span class="mcr-stat-value" style="color:#1a7a45">${reembolsadosMes.length} un</span></div>
+      <div class="mcr-stat"><span class="mcr-stat-label">Valor já reembolsado</span><span class="mcr-stat-value" style="color:#b91c1c">${fmtR(valorReembolsadoMes)}</span></div>
+    </div>
+    ${outrosMes.length ? `<div style="font-size:10.5px;color:var(--muted);margin-top:8px">+ ${outrosMes.length} com outra situação de resolução</div>` : ''}
+  `;
+  box.style.display = 'block';
+
+  const closeBtn = document.getElementById('devMcrClose');
+  if (closeBtn) closeBtn.addEventListener('click', () => { box.style.display = 'none'; box.innerHTML = ''; });
 }
 
 // ── RESUMO DO MÊS CLICADO (Vela de Vendas vs Custos) ──────────────────────────
@@ -181,29 +503,37 @@ async function fetchCSV(url) {
 }
 
 // ── LOAD DATA ─────────────────────────────────────────────────────────────────
-async function loadData() {
+async function loadData(opts = {}) {
+  const silent     = opts.silent === true;
   const loadingEl  = document.getElementById('loadingState');
   const dashEl     = document.getElementById('dashContent');
   const statusDot  = document.getElementById('statusDot');
   const statusText = document.getElementById('statusText');
   const syncTime   = document.getElementById('syncTime');
 
-  loadingEl.style.display  = 'flex';
-  dashEl.style.display     = 'none';
-  statusText.textContent   = 'Atualizando...';
+  if (!silent) {
+    loadingEl.style.display  = 'flex';
+    dashEl.style.display     = 'none';
+  }
+  statusText.textContent   = silent ? 'Sincronizando...' : 'Atualizando...';
   statusDot.style.background = '#f59e0b';
   statusDot.style.boxShadow  = '0 0 6px #f59e0b';
 
   try {
     const cb = '&cachebust=' + Date.now();
     const cbP = (CSV_ENTRADAS.includes('?') ? '&' : '?') + 'cachebust=' + Date.now();
+    const cbOc = (CSV_OCORRENCIAS.includes('?') ? '&' : '?') + 'cachebust=' + Date.now();
 
     // Carrega planilha principal (obrigatória) e as demais em paralelo com falha silenciosa
-    const [text, textEA, textEN] = await Promise.all([
+    const [text, textEA, textEN, textOC] = await Promise.all([
       fetchCSV(CSV_URL + cb),
       fetchCSV(CSV_ESTOQUE + cb).catch(() => ''),
       fetchCSV(CSV_ENTRADAS + cbP).catch(err => {
         console.warn('Entradas não carregadas:', err.message);
+        return '';
+      }),
+      fetchCSV(CSV_OCORRENCIAS + cbOc).catch(err => {
+        console.warn('Ocorrências não carregadas:', err.message);
         return '';
       })
     ]);
@@ -211,28 +541,37 @@ async function loadData() {
     processCSV(text);
     if (textEA) processEstoqueCSV(textEA);
     if (textEN) processEntradaCSV(textEN);
+    if (textOC) processOcorrenciasCSV(textOC);
     
     buildDashboard();
+    renderOcorrenciasPage();
+    renderDevolucoesVisao();
 
-    loadingEl.style.display    = 'none';
-    dashEl.style.display       = 'block';
+    if (!silent) {
+      loadingEl.style.display    = 'none';
+      dashEl.style.display       = 'block';
+    }
     statusText.textContent     = 'Online · Atualizado';
     statusDot.style.background = '#22c55e';
     statusDot.style.boxShadow  = '0 0 6px #22c55e';
     syncTime.textContent       = 'Última sync: ' + new Date().toLocaleTimeString('pt-BR');
 
   } catch (err) {
-    loadingEl.innerHTML = `
-      <div class="error-box">
-        ❌ Erro ao carregar dados: ${err.message}<br>
-        <small style="opacity:.7;display:block;margin-top:6px">
-          Verifique se a planilha principal está pública:<br>
-          <strong>Planilha → Compartilhar → Qualquer pessoa com o link pode ver</strong><br>
-          E também: <strong>Arquivo → Compartilhar → Publicar na web → CSV</strong>
-        </small>
-      </div>
-      <button class="sync-btn" onclick="loadData()" style="margin-top:12px;max-width:200px">↻ Tentar novamente</button>`;
-    statusText.textContent     = 'Erro de conexão';
+    if (!silent) {
+      loadingEl.innerHTML = `
+        <div class="error-box">
+          ❌ Erro ao carregar dados: ${err.message}<br>
+          <small style="opacity:.7;display:block;margin-top:6px">
+            Verifique se a planilha principal está pública:<br>
+            <strong>Planilha → Compartilhar → Qualquer pessoa com o link pode ver</strong><br>
+            E também: <strong>Arquivo → Compartilhar → Publicar na web → CSV</strong>
+          </small>
+        </div>
+        <button class="sync-btn" onclick="loadData()" style="margin-top:12px;max-width:200px">↻ Tentar novamente</button>`;
+    } else {
+      console.warn('Sincronização automática falhou:', err.message);
+    }
+    statusText.textContent     = silent ? 'Online · falha na última sync' : 'Erro de conexão';
     statusDot.style.background = '#ef4444';
     statusDot.style.boxShadow  = '0 0 6px #ef4444';
   }

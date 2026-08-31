@@ -50,6 +50,9 @@
     <div class="nav-item" data-page="estoque">
       <span class="nav-icon">⚠</span> Estoque Antigo
     </div>
+    <div class="nav-item" data-page="ocorrencias">
+      <span class="nav-icon">↩</span> Ocorrências e Devolução
+    </div>
 
     <div class="sidebar-footer">
       <button class="sync-btn" id="syncBtn">↻ Sincronizar</button>
@@ -188,6 +191,27 @@
                 </div>
                 <div id="resumo3meses" style="display:flex;flex-direction:column;gap:8px"></div>
               </div>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="card" style="margin-bottom:0">
+              <div class="card-title">Devoluções por mês</div>
+              <div class="legend">
+                <div class="legend-item"><span class="legend-dot" style="background:#ef4444"></span>Produtos devolvidos</div>
+              </div>
+              <div id="devClicadoResumo" class="mes-clicado-resumo" style="display:none"></div>
+              <div class="chart-wrap">
+                <canvas id="chartDevolucoes" role="img" aria-label="Produtos devolvidos por mês">Devoluções por mês.</canvas>
+              </div>
+              <div style="font-size:10px;color:var(--muted);font-style:italic;text-align:center;margin-top:6px">clique numa barra para ver o detalhe do mês</div>
+            </div>
+            <div class="card" style="margin-bottom:0">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem">
+                <div class="card-title" style="margin-bottom:0">Últimas devoluções</div>
+                <span style="font-size:10px;color:var(--teal);font-weight:600;letter-spacing:.04em;cursor:pointer" id="verTodasDevolucoes">VER TODAS →</span>
+              </div>
+              <div id="ultimasDevolucoes" style="display:flex;flex-direction:column;gap:8px"></div>
             </div>
           </div>
 
@@ -449,6 +473,95 @@
                   <tr><th>Data</th><th>Produto</th><th>Vendido</th><th>Custo</th><th>Resultado</th><th>Margem</th></tr>
                 </thead>
                 <tbody id="tabelaEA"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="page" id="page-ocorrencias">
+          <div class="kpi-grid">
+            <div class="kpi">
+              <div class="kpi-label">📋 Total de ocorrências</div>
+              <div class="kpi-value" id="oc-total">—</div>
+              <div class="kpi-sub">Todos os registros</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">↩ Devoluções</div>
+              <div class="kpi-value kpi-down" id="oc-devolucoes">—</div>
+              <div class="kpi-sub" id="oc-devolucoesPct">— do total</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">💸 Valor devolvido</div>
+              <div class="kpi-value kpi-down" id="oc-valorDevolvido">—</div>
+              <div class="kpi-sub">Soma do preço de venda</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">🚚 Frete de devolução</div>
+              <div class="kpi-value" id="oc-frete">—</div>
+              <div class="kpi-sub">Total pago em fretes</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">⏳ Aguardando chegar</div>
+              <div class="kpi-value kpi-warn" id="oc-pendentes">—</div>
+              <div class="kpi-sub">Solicitado, ainda não recebemos</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">✅ Já reembolsado</div>
+              <div class="kpi-value" id="oc-reembolsados">—</div>
+              <div class="kpi-sub">Recebido e dinheiro devolvido</div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-title">Impacto nas vendas</div>
+            <div class="mcr-stats" style="margin-top:8px">
+              <div class="mcr-stat"><span class="mcr-stat-label">Vendas brutas</span><span class="mcr-stat-value" id="oc-vendasBrutas">—</span></div>
+              <div class="mcr-stat"><span class="mcr-stat-label">Devoluções reembolsadas</span><span class="mcr-stat-value" style="color:#b91c1c" id="oc-devReembolsadas">—</span></div>
+              <div class="mcr-stat"><span class="mcr-stat-label">Vendas líquidas</span><span class="mcr-stat-value" style="color:#1a7a45" id="oc-vendasLiquidas">—</span></div>
+              <div class="mcr-stat"><span class="mcr-stat-label">Unidades vendidas</span><span class="mcr-stat-value" id="oc-unidVendidas">—</span></div>
+              <div class="mcr-stat"><span class="mcr-stat-label">Unidades devolvidas</span><span class="mcr-stat-value" style="color:#b91c1c" id="oc-unidDevolvidas">—</span></div>
+              <div class="mcr-stat"><span class="mcr-stat-label">Unidades líquidas</span><span class="mcr-stat-value" style="color:#1a7a45" id="oc-unidLiquidas">—</span></div>
+            </div>
+            <div style="font-size:10.5px;color:var(--muted);margin-top:8px;font-style:italic">
+              "Vendas líquidas" considera apenas devoluções já com reembolso confirmado. Pedidos aguardando chegar ainda não foram descontados.
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:12px;padding-bottom:.75rem">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+              <div class="card-title" style="margin-bottom:0">Filtrar por tipo</div>
+              <div id="ocFilterWrap" style="display:flex;flex-wrap:wrap;gap:5px">
+                <button class="month-filter-btn active" data-oc-tipo="todos">Todos</button>
+                <button class="month-filter-btn" data-oc-tipo="Devolução">Devolução</button>
+                <button class="month-filter-btn" data-oc-tipo="Erro">Erro</button>
+                <button class="month-filter-btn" data-oc-tipo="Ocorrência">Ocorrência</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:0">
+            <div class="card-title">Ocorrências por mês</div>
+            <div class="legend">
+              <div class="legend-item"><span class="legend-dot" style="background:#ef4444"></span>Devolução</div>
+              <div class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span>Erro</div>
+              <div class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span>Ocorrência</div>
+            </div>
+            <div class="chart-wrap">
+              <canvas id="chartOcorrencias" role="img" aria-label="Ocorrências por mês, por tipo">Ocorrências por mês.</canvas>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem">
+              <div class="card-title" style="margin-bottom:0">Todas as ocorrências</div>
+              <span style="font-size:10px;color:var(--muted);font-style:italic">clique em uma linha para ver os detalhes</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Data</th><th>Produto</th><th>IMEI</th><th>Tipo</th><th>Status</th><th>Valor</th></tr>
+                </thead>
+                <tbody id="tabelaOcorrencias"></tbody>
               </table>
             </div>
           </div>
