@@ -724,38 +724,7 @@ function renderEstoqueTempoPage() {
 // Três gráficos de visão geral: por TAG, OK vs Não OK, e por faixa de tempo —
 // sempre com base no total do estoque (não é afetado pelos filtros da tabela).
 function renderEstoqueTempoCharts(total, okCount, nokCount) {
-  if (!document.getElementById('chartEtqTag')) return;
-
-  // --- Por TAG ---
-  const tagCounts = {};
-  estoqueTempoData.forEach(p => { const t = p.tag || 'Não informado'; tagCounts[t] = (tagCounts[t] || 0) + 1; });
-  const tagLabels = Object.keys(tagCounts);
-  const tagColors = tagLabels.map(tagChartColor);
-  mkChart('chartEtqTag', {
-    type: 'doughnut',
-    data: { labels: tagLabels, datasets: [{ data: tagLabels.map(t => tagCounts[t]), backgroundColor: tagColors, borderWidth: 2, borderColor: '#ffffff' }] },
-    options: {
-      responsive: true, maintainAspectRatio: false, cutout: '62%',
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed} (${total ? (ctx.parsed / total * 100).toFixed(0) : 0}%)` } } }
-    }
-  });
-  renderEtqLegend('etqLegendTag', tagLabels.map((t, i) => ({ label: t, value: tagCounts[t], color: tagColors[i] })), total);
-
-  // --- OK vs Não OK ---
-  const semStatus = total - okCount - nokCount;
-  const okLabels = ['OK', 'Não OK'];
-  const okData   = [okCount, nokCount];
-  const okColors = ['#1a7a45', '#b91c1c'];
-  if (semStatus > 0) { okLabels.push('Não informado'); okData.push(semStatus); okColors.push('#94a3b8'); }
-  mkChart('chartEtqOk', {
-    type: 'doughnut',
-    data: { labels: okLabels, datasets: [{ data: okData, backgroundColor: okColors, borderWidth: 2 }] },
-    options: {
-      responsive: true, maintainAspectRatio: false, cutout: '62%',
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed} (${total ? (ctx.parsed / total * 100).toFixed(0) : 0}%)` } } }
-    }
-  });
-  renderEtqLegend('etqLegendOk', okLabels.map((l, i) => ({ label: l, value: okData[i], color: okColors[i] })), total);
+  if (!document.getElementById('chartEtqTempo')) return;
 
   // --- Por faixa de tempo no estoque ---
   const buckets = [

@@ -796,6 +796,16 @@ tr:hover td { background: var(--teal-light); }
   grid-template-columns: repeat(3, minmax(0,1fr));
   gap: 18px;
 }
+.etq-charts-grid-1 {
+  grid-template-columns: 1fr;
+}
+.etq-charts-grid-1 .etq-chart-legend {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+}
+.etq-charts-grid-1 .etq-chart-legend-row { width: auto; }
 .etq-chart-subtitle {
   font-size: 11px;
   font-weight: 700;
