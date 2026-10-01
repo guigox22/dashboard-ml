@@ -53,6 +53,9 @@
     <div class="nav-item" data-page="ocorrencias">
       <span class="nav-icon">↩</span> Ocorrências e Devolução
     </div>
+    <div class="nav-item" data-page="estoqueTempo">
+      <span class="nav-icon">⏱</span> Tempo no Estoque
+    </div>
 
     <div class="sidebar-footer">
       <button class="sync-btn" id="syncBtn">↻ Sincronizar</button>
@@ -562,6 +565,127 @@
                   <tr><th>Data</th><th>Produto</th><th>IMEI</th><th>Tipo</th><th>Status</th><th>Valor</th></tr>
                 </thead>
                 <tbody id="tabelaOcorrencias"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="page" id="page-estoqueTempo">
+          <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px">Identifique produtos parados e tome decisões sobre o destino do estoque.</p>
+
+          <div class="kpi-grid kpi-grid-6">
+            <div class="kpi">
+              <div class="kpi-label">📦 Total</div>
+              <div class="kpi-value" id="etq-total">—</div>
+              <div class="kpi-sub">Produtos no estoque</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">✅ OK</div>
+              <div class="kpi-value" id="etq-ok">—</div>
+              <div class="kpi-sub" id="etq-okPct">—</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">❌ Não OK</div>
+              <div class="kpi-value kpi-down" id="etq-nok">—</div>
+              <div class="kpi-sub" id="etq-nokPct">—</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">🕰 Muito antigos</div>
+              <div class="kpi-value kpi-down" id="etq-antigos">—</div>
+              <div class="kpi-sub">TAG: Aparelho muito antigo</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">📣 Anunciados</div>
+              <div class="kpi-value" id="etq-anunciados">—</div>
+              <div class="kpi-sub">TAG: ANUNCIADO</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">⛔ Inativos</div>
+              <div class="kpi-value" id="etq-inativos">—</div>
+              <div class="kpi-sub">TAG: INATIVO</div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+              <div class="card-title" style="margin-bottom:0">Filtros</div>
+              <button class="sync-btn" id="etqAtualizarBtn" style="width:auto;max-width:170px;padding:.45rem 1rem;font-size:12px">↻ Atualizar dados</button>
+            </div>
+
+            <input type="text" id="etqBusca" placeholder="🔎 Buscar por modelo, SKU ou IMEI..."
+              style="width:100%;padding:.6rem .85rem;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:13px;margin-bottom:12px;box-sizing:border-box">
+
+            <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">
+              <div>
+                <div class="etq-filter-label">TAG / Status</div>
+                <div id="etqTagWrap" style="display:flex;flex-wrap:wrap;gap:5px">
+                  <button class="month-filter-btn active" data-etq-tag="todos">Todos</button>
+                  <button class="month-filter-btn" data-etq-tag="Aguardar">Aguardar</button>
+                  <button class="month-filter-btn" data-etq-tag="ANUNCIADO">Anunciado</button>
+                  <button class="month-filter-btn" data-etq-tag="Aparelho muito antigo">Muito antigo</button>
+                  <button class="month-filter-btn" data-etq-tag="INATIVO">Inativo</button>
+                  <button class="month-filter-btn" data-etq-tag="Sem catalogo">Sem catálogo</button>
+                </div>
+              </div>
+
+              <div>
+                <div class="etq-filter-label">Situação</div>
+                <div id="etqOkWrap" style="display:flex;flex-wrap:wrap;gap:5px">
+                  <button class="month-filter-btn active" data-etq-ok="todos">Todos</button>
+                  <button class="month-filter-btn" data-etq-ok="ok">✅ OK</button>
+                  <button class="month-filter-btn" data-etq-ok="nok">❌ Não OK</button>
+                </div>
+              </div>
+
+              <div>
+                <div class="etq-filter-label">Tempo no estoque</div>
+                <select id="etqFaixaTempo" class="etq-select">
+                  <option value="todos">Todos</option>
+                  <option value="30">Até 30 dias</option>
+                  <option value="60">31 a 60 dias</option>
+                  <option value="90">61 a 90 dias</option>
+                  <option value="180">91 a 180 dias</option>
+                  <option value="999">Mais de 180 dias</option>
+                </select>
+              </div>
+
+              <div>
+                <div class="etq-filter-label">Faixa de preço</div>
+                <select id="etqFaixaPreco" class="etq-select">
+                  <option value="todos">Todos</option>
+                  <option value="semPreco">Sem preço</option>
+                  <option value="0-1000">Até R$ 1.000</option>
+                  <option value="1000-2500">R$ 1.000 – 2.500</option>
+                  <option value="2500-4000">R$ 2.500 – 4.000</option>
+                  <option value="4000-999999">Acima de R$ 4.000</option>
+                </select>
+              </div>
+
+              <div>
+                <div class="etq-filter-label">Ordenar por</div>
+                <select id="etqOrdenar" class="etq-select">
+                  <option value="tempoDesc">Maior tempo no estoque</option>
+                  <option value="tempoAsc">Menor tempo no estoque</option>
+                  <option value="precoDesc">Maior preço</option>
+                  <option value="precoAsc">Menor preço</option>
+                  <option value="tag">TAG</option>
+                  <option value="status">Status OK/Não OK</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:0">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem;flex-wrap:wrap;gap:6px">
+              <div class="card-title" style="margin-bottom:0">Produtos</div>
+              <span style="font-size:11.5px;color:var(--muted)" id="etqContador">Exibindo 0 de 0 produtos</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Produto</th><th>TAG</th><th>Tempo no estoque</th><th>Preço Mercado Livre</th><th>Status</th></tr>
+                </thead>
+                <tbody id="tabelaEstoqueTempo"></tbody>
               </table>
             </div>
           </div>

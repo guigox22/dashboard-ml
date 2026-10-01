@@ -325,6 +325,11 @@ html, body {
   margin-bottom: 1.25rem;
 }
 
+.kpi-grid-6 { grid-template-columns: repeat(6, minmax(0,1fr)); }
+@media (max-width: 960px) { .kpi-grid.kpi-grid-6 { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+@media (max-width: 640px) { .kpi-grid.kpi-grid-6 { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 420px) { .kpi-grid.kpi-grid-6 { grid-template-columns: 1fr; } }
+
 .kpi {
   background: var(--bg2);
   border: 1px solid var(--border);
@@ -781,4 +786,72 @@ tr:hover td { background: var(--teal-light); }
 
 @media (max-width: 640px) {
   .oc-detail-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* ── TEMPO DE PRODUTOS NO ESTOQUE ────────────────────────────────────────────── */
+.oc-status-nok { background: rgba(239,68,68,0.12); color: #b91c1c; }
+
+.etq-filter-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+.etq-select {
+  padding: 6px 10px;
+  font-size: 12.5px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  background: var(--bg3);
+  color: var(--text);
+  cursor: pointer;
+  min-width: 150px;
+}
+
+/* Badges de TAG (coluna B) */
+.etq-tag {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.etq-tag-aguardar  { background: rgba(59,130,246,0.12); color: #1d4ed8; }
+.etq-tag-anunciado { background: rgba(34,197,94,0.14);  color: #1a7a45; }
+.etq-tag-antigo    { background: rgba(239,68,68,0.14);  color: #b91c1c; }
+.etq-tag-inativo   { background: var(--bg4);            color: var(--muted2); }
+.etq-tag-semcat    { background: rgba(139,92,246,0.14); color: #6d28d9; }
+.etq-tag-outro     { background: var(--bg4);            color: var(--muted2); }
+
+/* Badge de tempo no estoque — quanto mais escuro/vermelho, mais tempo parado */
+.etq-tempo-badge {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-family: 'DM Mono', monospace;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+.etq-tempo-0 { background: var(--bg4); color: var(--muted2); }
+.etq-tempo-1 { background: rgba(34,197,94,0.12);  color: #1a7a45; }
+.etq-tempo-2 { background: rgba(245,158,11,0.14); color: #92400e; }
+.etq-tempo-3 { background: rgba(249,115,22,0.16); color: #c2410c; font-weight: 800; }
+.etq-tempo-4 { background: rgba(239,68,68,0.18);  color: #991b1b; font-weight: 800; }
+
+/* Destaque da linha inteira para estoque muito antigo */
+#tabelaEstoqueTempo tr.etq-tempo-4 { background: rgba(239,68,68,0.05); }
+#tabelaEstoqueTempo tr.etq-tempo-4 td:first-child { border-left: 3px solid #ef4444; }
+#tabelaEstoqueTempo tr.etq-tempo-3 td:first-child { border-left: 3px solid #f97316; }
+
+@media (max-width: 960px) {
+  #page-estoqueTempo .kpi-grid { grid-template-columns: repeat(3, minmax(0,1fr)) !important; }
+}
+@media (max-width: 560px) {
+  #page-estoqueTempo .kpi-grid { grid-template-columns: repeat(2, minmax(0,1fr)) !important; }
+  .etq-select { min-width: 0; width: 100%; }
 }

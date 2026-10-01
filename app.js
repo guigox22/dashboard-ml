@@ -7,13 +7,15 @@ const SHEET_ID               = '1OU-wXa3pfMTzPzRCdCtc3Jhzk08zpI_E';
 const SHEET_NUEVOS_ID        = '1YSsGmikzlfryiXtdHBCPZ3Qb8LakZvAQAVikuohvRw8';
 const GID_DASHBOARD          = '199181687';
 const GID_ESTOQUE            = '620201163';
+const GID_ESTOQUE_TEMPO      = '512280224';
 const GID_NUEVOS_PRODUCTOS   = '1121502030';
 
 // Usar /pub?output=csv para evitar bloqueio de CORS em planilhas públicas
-const CSV_URL        = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID_DASHBOARD}`;
-const CSV_ESTOQUE    = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID_ESTOQUE}`;
-const CSV_ENTRADAS   = `https://docs.google.com/spreadsheets/d/e/2PACX-1vRfGWqVSMfpdACAxc80A9aR34U_F8imvSnqWo98qP1eV7To00ZUVQQR__uORP_h2ePXm13ff9Sjyuft/pub?output=csv`;
-const CSV_OCORRENCIAS = `https://docs.google.com/spreadsheets/d/e/2PACX-1vSE9KMhZGyTdIQf5PBe55e4rmpKQwqrNVwiyHAKdPCe186vnyA9jSifWC74-RQz9Q/pub?gid=868263465&single=true&output=csv`;
+const CSV_URL          = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID_DASHBOARD}`;
+const CSV_ESTOQUE      = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID_ESTOQUE}`;
+const CSV_ENTRADAS     = `https://docs.google.com/spreadsheets/d/e/2PACX-1vRfGWqVSMfpdACAxc80A9aR34U_F8imvSnqWo98qP1eV7To00ZUVQQR__uORP_h2ePXm13ff9Sjyuft/pub?output=csv`;
+const CSV_OCORRENCIAS  = `https://docs.google.com/spreadsheets/d/e/2PACX-1vSE9KMhZGyTdIQf5PBe55e4rmpKQwqrNVwiyHAKdPCe186vnyA9jSifWC74-RQz9Q/pub?gid=868263465&single=true&output=csv`;
+const CSV_ESTOQUE_TEMPO = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID_ESTOQUE_TEMPO}`;
 
 // ── PAGE TITLES ───────────────────────────────────────────────────────────────
 const PAGE_TITLES = {
@@ -25,6 +27,7 @@ const PAGE_TITLES = {
   quinzena: 'Primeira vs Segunda Quinzena',
   estoque:  'Estoque Antigo · Vendas com Prejuízo',
   ocorrencias: 'Ocorrências e Devolução',
+  estoqueTempo: 'Tempo de Produtos no Estoque',
 };
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
@@ -35,6 +38,8 @@ let estoqueAntigo = [];
 let entradasNovas = [];
 let ocorrencias   = [];
 let ocFiltroTipo  = 'todos'; // 'todos' | 'Devolução' | 'Erro' | 'Ocorrência'
+let estoqueTempoData = [];
+let etqFiltros = { busca: '', tag: 'todos', ok: 'todos', tempo: 'todos', preco: 'todos', ordenar: 'tempoDesc' };
 const charts      = {};
 let anoFiltro     = 'todos'; // 'todos' | 2025 | 2026
 let mesFiltro     = 'todos'; // 'todos' | 3 | 6 | 12
@@ -113,6 +118,46 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnDev = document.querySelector('[data-oc-tipo="Devolução"]');
     if (btnDev) btnDev.click();
   });
+
+  // Filtros da página "Tempo no Estoque"
+  document.addEventListener('click', e => {
+    const btnTag = e.target.closest('[data-etq-tag]');
+    if (btnTag) {
+      document.querySelectorAll('[data-etq-tag]').forEach(b => b.classList.remove('active'));
+      btnTag.classList.add('active');
+      etqFiltros.tag = btnTag.getAttribute('data-etq-tag');
+      renderEstoqueTempoPage();
+      return;
+    }
+    const btnOk = e.target.closest('[data-etq-ok]');
+    if (btnOk) {
+      document.querySelectorAll('[data-etq-ok]').forEach(b => b.classList.remove('active'));
+      btnOk.classList.add('active');
+      etqFiltros.ok = btnOk.getAttribute('data-etq-ok');
+      renderEstoqueTempoPage();
+      return;
+    }
+  });
+
+  const etqBuscaEl = document.getElementById('etqBusca');
+  if (etqBuscaEl) etqBuscaEl.addEventListener('input', () => {
+    etqFiltros.busca = etqBuscaEl.value.trim().toLowerCase();
+    renderEstoqueTempoPage();
+  });
+
+  ['etqFaixaTempo', 'etqFaixaPreco', 'etqOrdenar'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      if (id === 'etqFaixaTempo') etqFiltros.tempo = el.value;
+      if (id === 'etqFaixaPreco') etqFiltros.preco = el.value;
+      if (id === 'etqOrdenar')    etqFiltros.ordenar = el.value;
+      renderEstoqueTempoPage();
+    });
+  });
+
+  const etqAtualizarBtn = document.getElementById('etqAtualizarBtn');
+  if (etqAtualizarBtn) etqAtualizarBtn.addEventListener('click', loadData);
 
   const syncBtn = document.getElementById('syncBtn');
   if (syncBtn) syncBtn.addEventListener('click', loadData);
@@ -469,6 +514,143 @@ function openDevMonthSummary(chave) {
   if (closeBtn) closeBtn.addEventListener('click', () => { box.style.display = 'none'; box.innerHTML = ''; });
 }
 
+// ── TEMPO DE PRODUTOS NO ESTOQUE ───────────────────────────────────────────────
+// Colunas da aba "Estoque": A SKU BLING, B TAG, C ANÚNCIO, D SKU, E IMEI,
+// F PRODUTO, G CAPACIDADE, H COR, I CLASSIFICAÇÃO, J (ícone ✅/❌),
+// K Data de Entrada, L PREÇO MERCADO LIVRE.
+function processEstoqueTempoCSV(text) {
+  estoqueTempoData = [];
+  const lines = text.split('\n').map(parseCSVLine);
+  const hoje = new Date();
+  for (let i = 1; i < lines.length; i++) {
+    const r = lines[i];
+    if (!r || r.length < 6) continue;
+    const skuBling = (r[0] || '').trim();
+    const produto  = (r[5] || '').trim();
+    if (!skuBling && !produto) continue;
+
+    const dt = parseDateBR(r[10]);
+    const dias = dt ? Math.floor((hoje - dt.date) / 86400000) : null;
+    const okIcon = (r[9] || '').trim();
+
+    estoqueTempoData.push({
+      skuBling,
+      tag: (r[1] || '').trim(),
+      sku: (r[3] || '').trim(),
+      imei: (r[4] || '').trim(),
+      produto: produto || 'Não informado',
+      capacidade: (r[6] || '').trim(),
+      cor: (r[7] || '').trim(),
+      classificacao: (r[8] || '').trim(),
+      ok: okIcon.includes('✅'),
+      temStatus: okIcon !== '',
+      dataEntrada: dt ? dt.date : null,
+      dias,
+      precoML: parseNum(r[11]),
+    });
+  }
+}
+
+function tagInfo(tag) {
+  const map = {
+    'Aguardar':               { cls: 'etq-tag-aguardar',  icon: '⏸' },
+    'ANUNCIADO':              { cls: 'etq-tag-anunciado', icon: '📣' },
+    'Aparelho muito antigo':  { cls: 'etq-tag-antigo',    icon: '🕰' },
+    'INATIVO':                { cls: 'etq-tag-inativo',   icon: '⛔' },
+    'Sem catalogo':           { cls: 'etq-tag-semcat',    icon: '📋' },
+  };
+  return map[tag] || { cls: 'etq-tag-outro', icon: '•' };
+}
+
+function tempoTier(dias) {
+  if (dias == null) return { cls: 'etq-tempo-0', label: 'Não informado' };
+  if (dias <= 30)  return { cls: 'etq-tempo-1', label: dias + ' dias' };
+  if (dias <= 90)  return { cls: 'etq-tempo-2', label: dias + ' dias' };
+  if (dias <= 180) return { cls: 'etq-tempo-3', label: dias + ' dias' };
+  return { cls: 'etq-tempo-4', label: dias + ' dias' };
+}
+
+function renderEstoqueTempoPage() {
+  const tbody = document.getElementById('tabelaEstoqueTempo');
+  if (!tbody) return;
+
+  const total = estoqueTempoData.length;
+  const okCount  = estoqueTempoData.filter(p => p.ok).length;
+  const nokCount = estoqueTempoData.filter(p => p.temStatus && !p.ok).length;
+  const antigos    = estoqueTempoData.filter(p => p.tag === 'Aparelho muito antigo').length;
+  const anunciados = estoqueTempoData.filter(p => p.tag === 'ANUNCIADO').length;
+  const inativos   = estoqueTempoData.filter(p => p.tag === 'INATIVO').length;
+
+  set('etq-total', total.toLocaleString('pt-BR'));
+  set('etq-ok', okCount.toLocaleString('pt-BR'));
+  set('etq-okPct', total ? ((okCount / total) * 100).toFixed(0) + '%' : '—');
+  set('etq-nok', nokCount.toLocaleString('pt-BR'));
+  set('etq-nokPct', total ? ((nokCount / total) * 100).toFixed(0) + '%' : '—');
+  set('etq-antigos', antigos.toLocaleString('pt-BR'));
+  set('etq-anunciados', anunciados.toLocaleString('pt-BR'));
+  set('etq-inativos', inativos.toLocaleString('pt-BR'));
+
+  // Aplica filtros
+  let lista = estoqueTempoData.filter(p => {
+    if (etqFiltros.tag !== 'todos' && p.tag !== etqFiltros.tag) return false;
+    if (etqFiltros.ok === 'ok' && !p.ok) return false;
+    if (etqFiltros.ok === 'nok' && (p.ok || !p.temStatus)) return false;
+    if (etqFiltros.tempo !== 'todos') {
+      const limite = parseInt(etqFiltros.tempo);
+      if (p.dias == null) return false;
+      if (limite === 30 && !(p.dias <= 30)) return false;
+      if (limite === 60 && !(p.dias > 30 && p.dias <= 60)) return false;
+      if (limite === 90 && !(p.dias > 60 && p.dias <= 90)) return false;
+      if (limite === 180 && !(p.dias > 90 && p.dias <= 180)) return false;
+      if (limite === 999 && !(p.dias > 180)) return false;
+    }
+    if (etqFiltros.preco !== 'todos') {
+      if (etqFiltros.preco === 'semPreco') { if (p.precoML != null) return false; }
+      else {
+        const [min, max] = etqFiltros.preco.split('-').map(Number);
+        if (p.precoML == null || p.precoML < min || p.precoML > max) return false;
+      }
+    }
+    if (etqFiltros.busca) {
+      const alvo = (p.produto + ' ' + p.sku + ' ' + p.skuBling + ' ' + p.imei).toLowerCase();
+      if (!alvo.includes(etqFiltros.busca)) return false;
+    }
+    return true;
+  });
+
+  // Ordenação
+  const dSort = (p) => p.dias == null ? -1 : p.dias;
+  const pSort = (p) => p.precoML == null ? -1 : p.precoML;
+  switch (etqFiltros.ordenar) {
+    case 'tempoAsc':  lista.sort((a, b) => dSort(a) - dSort(b)); break;
+    case 'precoDesc': lista.sort((a, b) => pSort(b) - pSort(a)); break;
+    case 'precoAsc':  lista.sort((a, b) => pSort(a) - pSort(b)); break;
+    case 'tag':       lista.sort((a, b) => a.tag.localeCompare(b.tag)); break;
+    case 'status':    lista.sort((a, b) => Number(b.ok) - Number(a.ok)); break;
+    default:          lista.sort((a, b) => dSort(b) - dSort(a)); // tempoDesc
+  }
+
+  const contadorEl = document.getElementById('etqContador');
+  if (contadorEl) contadorEl.textContent = `Exibindo ${lista.length} de ${total} produtos`;
+
+  tbody.innerHTML = lista.map(p => {
+    const ti = tagInfo(p.tag);
+    const tt = tempoTier(p.dias);
+    const specs = [p.capacidade, p.cor, p.classificacao].filter(Boolean).join(' · ');
+    return `
+    <tr class="${tt.cls}">
+      <td>
+        <div style="font-weight:700;color:var(--text)">${p.produto}</div>
+        ${specs ? `<div style="font-size:11px;color:var(--muted2);margin-top:2px">${specs}</div>` : ''}
+      </td>
+      <td><span class="etq-tag ${ti.cls}">${ti.icon} ${p.tag || 'Não informado'}</span></td>
+      <td><span class="etq-tempo-badge ${tt.cls}">${tt.label}</span></td>
+      <td>${p.precoML != null ? fmtR(p.precoML) : '<span style="color:var(--muted)">Sem preço</span>'}</td>
+      <td>${p.temStatus ? (p.ok ? '<span class="oc-status oc-status-ok">✅ OK</span>' : '<span class="oc-status oc-status-nok">❌ Não OK</span>') : '<span class="oc-status oc-status-neutro">—</span>'}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--muted)">Nenhum produto encontrado para esse filtro.</td></tr>';
+}
+
 // ── RESUMO DO MÊS CLICADO (Vela de Vendas vs Custos) ──────────────────────────
 // Aparece embutido dentro do próprio card do gráfico, no mesmo estilo visual
 // dos cards de "Últimos 3 meses".
@@ -541,9 +723,10 @@ async function loadData(opts = {}) {
     const cb = '&cachebust=' + Date.now();
     const cbP = (CSV_ENTRADAS.includes('?') ? '&' : '?') + 'cachebust=' + Date.now();
     const cbOc = (CSV_OCORRENCIAS.includes('?') ? '&' : '?') + 'cachebust=' + Date.now();
+    const cbET = (CSV_ESTOQUE_TEMPO.includes('?') ? '&' : '?') + 'cachebust=' + Date.now();
 
     // Carrega planilha principal (obrigatória) e as demais em paralelo com falha silenciosa
-    const [text, textEA, textEN, textOC] = await Promise.all([
+    const [text, textEA, textEN, textOC, textET] = await Promise.all([
       fetchCSV(CSV_URL + cb),
       fetchCSV(CSV_ESTOQUE + cb).catch(() => ''),
       fetchCSV(CSV_ENTRADAS + cbP).catch(err => {
@@ -553,6 +736,10 @@ async function loadData(opts = {}) {
       fetchCSV(CSV_OCORRENCIAS + cbOc).catch(err => {
         console.warn('Ocorrências não carregadas:', err.message);
         return '';
+      }),
+      fetchCSV(CSV_ESTOQUE_TEMPO + cbET).catch(err => {
+        console.warn('Tempo no estoque não carregado:', err.message);
+        return '';
       })
     ]);
 
@@ -560,10 +747,12 @@ async function loadData(opts = {}) {
     if (textEA) processEstoqueCSV(textEA);
     if (textEN) processEntradaCSV(textEN);
     if (textOC) processOcorrenciasCSV(textOC);
+    if (textET) processEstoqueTempoCSV(textET);
     
     buildDashboard();
     renderOcorrenciasPage();
     renderDevolucoesVisao();
+    renderEstoqueTempoPage();
 
     if (!silent) {
       loadingEl.style.display    = 'none';
