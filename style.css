@@ -791,6 +791,48 @@ tr:hover td { background: var(--teal-light); }
 /* ── TEMPO DE PRODUTOS NO ESTOQUE ────────────────────────────────────────────── */
 .oc-status-nok { background: rgba(239,68,68,0.12); color: #b91c1c; }
 
+.etq-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  gap: 18px;
+}
+.etq-chart-subtitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted2);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: center;
+  margin-bottom: 8px;
+}
+.etq-chart-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  font-size: 11.5px;
+}
+.etq-chart-legend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.etq-chart-legend-row .dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+.etq-chart-legend-row .label { display: flex; align-items: center; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.etq-chart-legend-row .val { font-weight: 700; font-family: 'DM Mono', monospace; color: var(--muted2); white-space: nowrap; }
+
+@media (max-width: 860px) {
+  .etq-charts-grid { grid-template-columns: 1fr; gap: 24px; }
+}
+
 .etq-filter-label {
   font-size: 10px;
   font-weight: 700;
@@ -847,6 +889,54 @@ tr:hover td { background: var(--teal-light); }
 #tabelaEstoqueTempo tr.etq-tempo-4 { background: rgba(239,68,68,0.05); }
 #tabelaEstoqueTempo tr.etq-tempo-4 td:first-child { border-left: 3px solid #ef4444; }
 #tabelaEstoqueTempo tr.etq-tempo-3 td:first-child { border-left: 3px solid #f97316; }
+
+.etq-tempo-click {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.etq-tempo-meses { font-weight: 500; opacity: 0.85; }
+.etq-tempo-edit-icon {
+  font-size: 10px;
+  opacity: 0.55;
+}
+.etq-tempo-click:hover .etq-tempo-edit-icon { opacity: 1; }
+
+.etq-date-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 3px 5px;
+}
+.etq-date-input {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 2px 0;
+  min-width: 0;
+}
+.etq-date-btn {
+  border: none;
+  background: var(--bg3);
+  border-radius: 5px;
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--muted2);
+  flex-shrink: 0;
+}
+.etq-date-save { background: rgba(34,197,94,0.16); color: #1a7a45; }
+.etq-date-save:hover { background: rgba(34,197,94,0.28); }
+.etq-date-clear:hover { background: var(--bg4); color: var(--text); }
+.etq-date-cancel:hover { background: rgba(239,68,68,0.16); color: #b91c1c; }
 
 @media (max-width: 960px) {
   #page-estoqueTempo .kpi-grid { grid-template-columns: repeat(3, minmax(0,1fr)) !important; }

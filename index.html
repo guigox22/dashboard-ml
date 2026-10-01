@@ -607,6 +607,33 @@
           </div>
 
           <div class="card" style="margin-bottom:12px">
+            <div class="card-title">Visão geral do estoque</div>
+            <div class="etq-charts-grid">
+              <div class="etq-chart-col">
+                <div class="etq-chart-subtitle">Por TAG / status</div>
+                <div class="chart-wrap" style="height:180px">
+                  <canvas id="chartEtqTag" role="img" aria-label="Distribuição por TAG">Distribuição por TAG.</canvas>
+                </div>
+                <div id="etqLegendTag" class="etq-chart-legend"></div>
+              </div>
+              <div class="etq-chart-col">
+                <div class="etq-chart-subtitle">OK vs Não OK</div>
+                <div class="chart-wrap" style="height:180px">
+                  <canvas id="chartEtqOk" role="img" aria-label="OK vs Não OK">OK vs Não OK.</canvas>
+                </div>
+                <div id="etqLegendOk" class="etq-chart-legend"></div>
+              </div>
+              <div class="etq-chart-col">
+                <div class="etq-chart-subtitle">Tempo no estoque</div>
+                <div class="chart-wrap" style="height:180px">
+                  <canvas id="chartEtqTempo" role="img" aria-label="Distribuição por tempo no estoque">Tempo no estoque.</canvas>
+                </div>
+                <div id="etqLegendTempo" class="etq-chart-legend"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:12px">
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
               <div class="card-title" style="margin-bottom:0">Filtros</div>
               <button class="sync-btn" id="etqAtualizarBtn" style="width:auto;max-width:170px;padding:.45rem 1rem;font-size:12px">↻ Atualizar dados</button>
@@ -683,7 +710,7 @@
             <div class="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Produto</th><th>TAG</th><th>Tempo no estoque</th><th>Preço Mercado Livre</th><th>Status</th></tr>
+                  <tr><th>Produto</th><th>IMEI</th><th>TAG</th><th>Tempo no estoque</th><th>Preço Mercado Livre</th><th>Status</th></tr>
                 </thead>
                 <tbody id="tabelaEstoqueTempo"></tbody>
               </table>

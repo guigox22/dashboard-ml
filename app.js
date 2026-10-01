@@ -40,6 +40,7 @@ let ocorrencias   = [];
 let ocFiltroTipo  = 'todos'; // 'todos' | 'Devolução' | 'Erro' | 'Ocorrência'
 let estoqueTempoData = [];
 let etqFiltros = { busca: '', tag: 'todos', ok: 'todos', tempo: 'todos', preco: 'todos', ordenar: 'tempoDesc' };
+let etqListaAtual = [];
 const charts      = {};
 let anoFiltro     = 'todos'; // 'todos' | 2025 | 2026
 let mesFiltro     = 'todos'; // 'todos' | 3 | 6 | 12
@@ -158,6 +159,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const etqAtualizarBtn = document.getElementById('etqAtualizarBtn');
   if (etqAtualizarBtn) etqAtualizarBtn.addEventListener('click', loadData);
+
+  // Clique na "vela" de tempo no estoque: abre edição da data de entrada
+  document.addEventListener('click', e => {
+    const badge = e.target.closest('.etq-tempo-click');
+    if (!badge) return;
+    if (badge.querySelector('.etq-date-edit')) return; // já está em edição
+    const idx = +badge.getAttribute('data-etq-tempo-idx');
+    const p = etqListaAtual[idx];
+    if (!p) return;
+    abrirEdicaoDataEstoque(badge, p);
+  });
 
   const syncBtn = document.getElementById('syncBtn');
   if (syncBtn) syncBtn.addEventListener('click', loadData);
@@ -518,6 +530,27 @@ function openDevMonthSummary(chave) {
 // Colunas da aba "Estoque": A SKU BLING, B TAG, C ANÚNCIO, D SKU, E IMEI,
 // F PRODUTO, G CAPACIDADE, H COR, I CLASSIFICAÇÃO, J (ícone ✅/❌),
 // K Data de Entrada, L PREÇO MERCADO LIVRE.
+
+// Permite ao usuário corrigir/definir manualmente a data de entrada de um
+// aparelho (ex: quando a planilha não tem a data, ou está errada). Isso fica
+// salvo só neste navegador (localStorage) — não altera a planilha original.
+function getDataOverrides() {
+  try { return JSON.parse(localStorage.getItem('etq_dataOverrides') || '{}'); }
+  catch (e) { return {}; }
+}
+function setDataOverride(key, isoDate) {
+  const overrides = getDataOverrides();
+  if (isoDate) overrides[key] = isoDate; else delete overrides[key];
+  localStorage.setItem('etq_dataOverrides', JSON.stringify(overrides));
+}
+function productKey(p) {
+  return p.imei || (p.skuBling + '|' + p.sku) || p.produto;
+}
+function diasParaMeses(dias) {
+  if (dias == null) return null;
+  return Math.floor(dias / 30);
+}
+
 function processEstoqueTempoCSV(text) {
   estoqueTempoData = [];
   const lines = text.split('\n').map(parseCSVLine);
@@ -546,9 +579,24 @@ function processEstoqueTempoCSV(text) {
       temStatus: okIcon !== '',
       dataEntrada: dt ? dt.date : null,
       dias,
+      dataManual: false,
       precoML: parseNum(r[11]),
     });
   }
+
+  // Aplica datas definidas manualmente pelo usuário (sobrepõem a da planilha)
+  const overrides = getDataOverrides();
+  estoqueTempoData.forEach(p => {
+    const key = productKey(p);
+    const iso = overrides[key];
+    if (!iso) return;
+    const [y, m, d] = iso.split('-').map(Number);
+    if (!y || !m || !d) return;
+    const dt = new Date(y, m - 1, d);
+    p.dataEntrada = dt;
+    p.dias = Math.floor((hoje - dt) / 86400000);
+    p.dataManual = true;
+  });
 }
 
 function tagInfo(tag) {
@@ -560,6 +608,17 @@ function tagInfo(tag) {
     'Sem catalogo':           { cls: 'etq-tag-semcat',    icon: '📋' },
   };
   return map[tag] || { cls: 'etq-tag-outro', icon: '•' };
+}
+
+function tagChartColor(tag) {
+  const map = {
+    'Aguardar':              '#1d4ed8',
+    'ANUNCIADO':             '#1a7a45',
+    'Aparelho muito antigo': '#b91c1c',
+    'INATIVO':               '#64748b',
+    'Sem catalogo':          '#6d28d9',
+  };
+  return map[tag] || '#94a3b8';
 }
 
 function tempoTier(dias) {
@@ -589,6 +648,8 @@ function renderEstoqueTempoPage() {
   set('etq-antigos', antigos.toLocaleString('pt-BR'));
   set('etq-anunciados', anunciados.toLocaleString('pt-BR'));
   set('etq-inativos', inativos.toLocaleString('pt-BR'));
+
+  renderEstoqueTempoCharts(total, okCount, nokCount);
 
   // Aplica filtros
   let lista = estoqueTempoData.filter(p => {
@@ -630,12 +691,15 @@ function renderEstoqueTempoPage() {
     default:          lista.sort((a, b) => dSort(b) - dSort(a)); // tempoDesc
   }
 
+  etqListaAtual = lista; // guarda referência p/ clique de edição de data
+
   const contadorEl = document.getElementById('etqContador');
   if (contadorEl) contadorEl.textContent = `Exibindo ${lista.length} de ${total} produtos`;
 
-  tbody.innerHTML = lista.map(p => {
+  tbody.innerHTML = lista.map((p, idx) => {
     const ti = tagInfo(p.tag);
     const tt = tempoTier(p.dias);
+    const meses = diasParaMeses(p.dias);
     const specs = [p.capacidade, p.cor, p.classificacao].filter(Boolean).join(' · ');
     return `
     <tr class="${tt.cls}">
@@ -643,12 +707,125 @@ function renderEstoqueTempoPage() {
         <div style="font-weight:700;color:var(--text)">${p.produto}</div>
         ${specs ? `<div style="font-size:11px;color:var(--muted2);margin-top:2px">${specs}</div>` : ''}
       </td>
+      <td style="font-family:'DM Mono',monospace;font-size:12px;color:var(--muted2)">${p.imei || '—'}</td>
       <td><span class="etq-tag ${ti.cls}">${ti.icon} ${p.tag || 'Não informado'}</span></td>
-      <td><span class="etq-tempo-badge ${tt.cls}">${tt.label}</span></td>
+      <td>
+        <span class="etq-tempo-badge ${tt.cls} etq-tempo-click" data-etq-tempo-idx="${idx}" title="Clique para definir/editar a data de entrada no estoque">
+          ${tt.label}${meses != null ? `<span class="etq-tempo-meses"> · ${meses} ${meses === 1 ? 'mês' : 'meses'}</span>` : ''}
+          <span class="etq-tempo-edit-icon">✎</span>
+        </span>
+      </td>
       <td>${p.precoML != null ? fmtR(p.precoML) : '<span style="color:var(--muted)">Sem preço</span>'}</td>
       <td>${p.temStatus ? (p.ok ? '<span class="oc-status oc-status-ok">✅ OK</span>' : '<span class="oc-status oc-status-nok">❌ Não OK</span>') : '<span class="oc-status oc-status-neutro">—</span>'}</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--muted)">Nenhum produto encontrado para esse filtro.</td></tr>';
+  }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--muted)">Nenhum produto encontrado para esse filtro.</td></tr>';
+}
+
+// Três gráficos de visão geral: por TAG, OK vs Não OK, e por faixa de tempo —
+// sempre com base no total do estoque (não é afetado pelos filtros da tabela).
+function renderEstoqueTempoCharts(total, okCount, nokCount) {
+  if (!document.getElementById('chartEtqTag')) return;
+
+  // --- Por TAG ---
+  const tagCounts = {};
+  estoqueTempoData.forEach(p => { const t = p.tag || 'Não informado'; tagCounts[t] = (tagCounts[t] || 0) + 1; });
+  const tagLabels = Object.keys(tagCounts);
+  const tagColors = tagLabels.map(tagChartColor);
+  mkChart('chartEtqTag', {
+    type: 'doughnut',
+    data: { labels: tagLabels, datasets: [{ data: tagLabels.map(t => tagCounts[t]), backgroundColor: tagColors, borderWidth: 2, borderColor: '#ffffff' }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '62%',
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed} (${total ? (ctx.parsed / total * 100).toFixed(0) : 0}%)` } } }
+    }
+  });
+  renderEtqLegend('etqLegendTag', tagLabels.map((t, i) => ({ label: t, value: tagCounts[t], color: tagColors[i] })), total);
+
+  // --- OK vs Não OK ---
+  const semStatus = total - okCount - nokCount;
+  const okLabels = ['OK', 'Não OK'];
+  const okData   = [okCount, nokCount];
+  const okColors = ['#1a7a45', '#b91c1c'];
+  if (semStatus > 0) { okLabels.push('Não informado'); okData.push(semStatus); okColors.push('#94a3b8'); }
+  mkChart('chartEtqOk', {
+    type: 'doughnut',
+    data: { labels: okLabels, datasets: [{ data: okData, backgroundColor: okColors, borderWidth: 2 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '62%',
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed} (${total ? (ctx.parsed / total * 100).toFixed(0) : 0}%)` } } }
+    }
+  });
+  renderEtqLegend('etqLegendOk', okLabels.map((l, i) => ({ label: l, value: okData[i], color: okColors[i] })), total);
+
+  // --- Por faixa de tempo no estoque ---
+  const buckets = [
+    { label: 'Até 30 dias',   min: 0,   max: 30,       color: '#1a7a45' },
+    { label: '31 a 60 dias',  min: 31,  max: 60,       color: '#65a30d' },
+    { label: '61 a 90 dias',  min: 61,  max: 90,       color: '#ca8a04' },
+    { label: '91 a 180 dias', min: 91,  max: 180,      color: '#ea580c' },
+    { label: 'Mais de 180',   min: 181, max: Infinity, color: '#b91c1c' },
+  ];
+  const bucketCounts = buckets.map(b => estoqueTempoData.filter(p => p.dias != null && p.dias >= b.min && p.dias <= b.max).length);
+  const semData = estoqueTempoData.filter(p => p.dias == null).length;
+  const tempoLabels = buckets.map(b => b.label);
+  const tempoColors = buckets.map(b => b.color);
+  const tempoData   = bucketCounts;
+  if (semData > 0) { tempoLabels.push('Não informado'); tempoColors.push('#94a3b8'); tempoData.push(semData); }
+
+  mkChart('chartEtqTempo', {
+    type: 'bar',
+    data: { labels: tempoLabels, datasets: [{ data: tempoData, backgroundColor: tempoColors, borderRadius: 4, maxBarThickness: 22 }] },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.parsed.x} (${total ? (ctx.parsed.x / total * 100).toFixed(0) : 0}%)` } } },
+      scales: {
+        x: { ticks: { precision: 0, color: '#7a8a9a', font: { size: 10 } }, grid: { color: 'rgba(0,0,0,0.06)' } },
+        y: { ticks: { color: '#7a8a9a', font: { size: 10 } }, grid: { display: false } }
+      }
+    }
+  });
+  renderEtqLegend('etqLegendTempo', tempoLabels.map((l, i) => ({ label: l, value: tempoData[i], color: tempoColors[i] })), total);
+}
+
+function renderEtqLegend(elId, items, total) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.innerHTML = items.map(it => {
+    const pct = total ? (it.value / total * 100).toFixed(0) : 0;
+    return `<div class="etq-chart-legend-row"><span class="label"><span class="dot" style="background:${it.color}"></span>${it.label}</span><span class="val">${it.value} (${pct}%)</span></div>`;
+  }).join('');
+}
+
+// ── EDIÇÃO MANUAL DA DATA DE ENTRADA NO ESTOQUE ────────────────────────────────
+function abrirEdicaoDataEstoque(badgeEl, p) {
+  const iso = p.dataEntrada
+    ? p.dataEntrada.getFullYear() + '-' + String(p.dataEntrada.getMonth() + 1).padStart(2, '0') + '-' + String(p.dataEntrada.getDate()).padStart(2, '0')
+    : '';
+  badgeEl.innerHTML = `
+    <span class="etq-date-edit" onclick="event.stopPropagation()">
+      <input type="date" class="etq-date-input" id="etqDateInputTmp" value="${iso}">
+      <button type="button" class="etq-date-btn etq-date-save" title="Salvar">✓</button>
+      ${p.dataManual ? '<button type="button" class="etq-date-btn etq-date-clear" title="Restaurar data da planilha">↺</button>' : ''}
+      <button type="button" class="etq-date-btn etq-date-cancel" title="Cancelar">✕</button>
+    </span>`;
+
+  const input = badgeEl.querySelector('.etq-date-input');
+  if (input) input.focus();
+
+  const salvar = () => {
+    const val = input.value; // yyyy-mm-dd
+    if (!val) return;
+    setDataOverride(productKey(p), val);
+    renderEstoqueTempoPage();
+  };
+  const limpar = () => { setDataOverride(productKey(p), null); renderEstoqueTempoPage(); };
+  const cancelar = () => { renderEstoqueTempoPage(); };
+
+  badgeEl.querySelector('.etq-date-save').addEventListener('click', salvar);
+  badgeEl.querySelector('.etq-date-cancel').addEventListener('click', cancelar);
+  const clearBtn = badgeEl.querySelector('.etq-date-clear');
+  if (clearBtn) clearBtn.addEventListener('click', limpar);
+  if (input) input.addEventListener('keydown', e => { if (e.key === 'Enter') salvar(); if (e.key === 'Escape') cancelar(); });
 }
 
 // ── RESUMO DO MÊS CLICADO (Vela de Vendas vs Custos) ──────────────────────────
