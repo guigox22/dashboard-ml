@@ -35,6 +35,7 @@ let dados         = [];
 let metas         = [];
 let quinzenas     = [];
 let estoqueAntigo = [];
+let eaFiltroMes   = 'todos'; // 'todos' | 'Jan' | 'Fev' | ...
 let entradasNovas = [];
 let ocorrencias   = [];
 let ocFiltroTipo  = 'todos'; // 'todos' | 'Devolução' | 'Erro' | 'Ocorrência'
@@ -93,9 +94,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Filtro de meses
   document.addEventListener('click', e => {
-    const btn = e.target.closest('.month-filter-btn');
+    const btn = e.target.closest('.month-filter-btn[data-months]');
     if (!btn) return;
-    if (btn.hasAttribute('data-oc-tipo')) return; // tratado abaixo
     document.querySelectorAll('.month-filter-btn[data-months]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     const val = btn.getAttribute('data-months');
@@ -111,6 +111,14 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.classList.add('active');
     ocFiltroTipo = btn.getAttribute('data-oc-tipo');
     renderOcorrenciasPage();
+  });
+
+  // Filtro de mês (página Estoque Antigo)
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('[data-ea-mes]');
+    if (!btn) return;
+    eaFiltroMes = btn.getAttribute('data-ea-mes');
+    buildEstoque();
   });
 
   const verTodasBtn = document.getElementById('verTodasDevolucoes');
@@ -1112,10 +1120,22 @@ function useFallbackData() {
 function buildEstoque() {
   if (!estoqueAntigo.length) return;
   const gc = 'rgba(0,0,0,0.06)', tc = '#7a8a9a';
-  const totalV   = estoqueAntigo.reduce((a, d) => a + d.vendido, 0);
-  const totalC   = estoqueAntigo.reduce((a, d) => a + d.custo,   0);
+
+  // Botões de mês (na ordem em que aparecem na planilha)
+  const mesesDisp = [...new Set(estoqueAntigo.map(d => d.mes))];
+  if (eaFiltroMes !== 'todos' && !mesesDisp.includes(eaFiltroMes)) eaFiltroMes = 'todos';
+  const wrap = document.getElementById('eaFilterWrap');
+  if (wrap) {
+    wrap.innerHTML = ['todos', ...mesesDisp].map(m =>
+      `<button class="month-filter-btn${m === eaFiltroMes ? ' active' : ''}" data-ea-mes="${m}">${m === 'todos' ? 'Todos' : m}</button>`
+    ).join('');
+  }
+
+  const lista = eaFiltroMes === 'todos' ? estoqueAntigo : estoqueAntigo.filter(d => d.mes === eaFiltroMes);
+  const totalV   = lista.reduce((a, d) => a + d.vendido, 0);
+  const totalC   = lista.reduce((a, d) => a + d.custo,   0);
   const totalR   = totalV - totalC;
-  const totalQ   = estoqueAntigo.reduce((a, d) => a + d.qtd,     0);
+  const totalQ   = lista.reduce((a, d) => a + d.qtd,     0);
   const markup   = totalC > 0 ? ((totalV - totalC) / totalC) * 100 : 0;
   const margem   = totalV > 0 ? ((totalV - totalC) / totalV) * 100 : 0;
 
@@ -1126,14 +1146,14 @@ function buildEstoque() {
   set('ea-qtd',          totalQ.toString());
 
   const porMes = {};
-  estoqueAntigo.forEach(d => {
+  lista.forEach(d => {
     if (!porMes[d.mes]) porMes[d.mes] = { v: 0, c: 0, r: 0 };
     porMes[d.mes].v += d.vendido; porMes[d.mes].c += d.custo; porMes[d.mes].r += d.res;
   });
   
   const tb = document.getElementById('tabelaEA');
   if (tb) {
-    tb.innerHTML = estoqueAntigo.map(d => {
+    tb.innerHTML = lista.map(d => {
       const margPct = d.vendido > 0 ? ((d.res / d.vendido) * 100).toFixed(1) : 0;
       const bc = d.res >= 0 ? 'badge-green' : 'badge-red';
       return `<tr><td>${d.data}</td><td>${d.produto}</td><td>${fmtR(d.vendido)}</td><td>${fmtR(d.custo)}</td><td>${fmtR(d.res)}</td><td><span class="badge ${bc}">${margPct}%</span></td></tr>`;
