@@ -50,6 +50,9 @@
     <div class="nav-item" data-page="estoque">
       <span class="nav-icon">⚠</span> Estoque Antigo
     </div>
+    <div class="nav-item" data-page="caros">
+      <span class="nav-icon">◆</span> Produtos caros - Novembro
+    </div>
     <div class="nav-item" data-page="ocorrencias">
       <span class="nav-icon">↩</span> Ocorrências e Devolução
     </div>
@@ -485,6 +488,43 @@
                   <tr><th>Data</th><th>Produto</th><th>Vendido</th><th>Custo</th><th>Resultado</th><th>Margem</th></tr>
                 </thead>
                 <tbody id="tabelaEA"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="page" id="page-caros">
+          <div class="kpi-grid">
+            <div class="kpi">
+              <div class="kpi-label">📦 Total Vendido</div>
+              <div class="kpi-value" id="nv-totalVendido">—</div>
+              <div class="kpi-sub">Receita bruta</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">💸 Custo Total</div>
+              <div class="kpi-value kpi-down" id="nv-totalCusto">—</div>
+              <div class="kpi-sub">Valor pago pelos aparelhos</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">📉 Resultado</div>
+              <div class="kpi-value kpi-down" id="nv-resultado">—</div>
+              <div class="kpi-sub" id="nv-markup">Markup —</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">📱 Unidades</div>
+              <div class="kpi-value" id="nv-qtd">—</div>
+              <div class="kpi-sub">Aparelhos vendidos</div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:12px">
+            <div class="card-title">Produtos vendidos · Lote de Novembro</div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Data</th><th>Produto</th><th>Vendido</th><th>Custo</th><th>Resultado</th><th>Margem</th></tr>
+                </thead>
+                <tbody id="tabelaNV"></tbody>
               </table>
             </div>
           </div>

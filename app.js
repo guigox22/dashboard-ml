@@ -26,6 +26,7 @@ const PAGE_TITLES = {
   margem:   'Análise de Margem',
   quinzena: 'Primeira vs Segunda Quinzena',
   estoque:  'Estoque Antigo · Vendas com Prejuízo',
+  caros:    'Produtos caros - Novembro',
   ocorrencias: 'Ocorrências e Devolução',
   estoqueTempo: 'Tempo de Produtos no Estoque',
 };
@@ -1117,12 +1118,16 @@ function useFallbackData() {
   ];
 }
 
+// Novembro é um lote separado (produtos caros), exibido na aba própria
+const MES_LOTE_CAROS = 'Nov';
+
 function buildEstoque() {
   if (!estoqueAntigo.length) return;
-  const gc = 'rgba(0,0,0,0.06)', tc = '#7a8a9a';
+  const base  = estoqueAntigo.filter(d => d.mes !== MES_LOTE_CAROS);
+  const caros = estoqueAntigo.filter(d => d.mes === MES_LOTE_CAROS);
 
   // Botões de mês (na ordem em que aparecem na planilha)
-  const mesesDisp = [...new Set(estoqueAntigo.map(d => d.mes))];
+  const mesesDisp = [...new Set(base.map(d => d.mes))];
   if (eaFiltroMes !== 'todos' && !mesesDisp.includes(eaFiltroMes)) eaFiltroMes = 'todos';
   const wrap = document.getElementById('eaFilterWrap');
   if (wrap) {
@@ -1131,7 +1136,13 @@ function buildEstoque() {
     ).join('');
   }
 
-  const lista = eaFiltroMes === 'todos' ? estoqueAntigo : estoqueAntigo.filter(d => d.mes === eaFiltroMes);
+  const lista = eaFiltroMes === 'todos' ? base : base.filter(d => d.mes === eaFiltroMes);
+  renderResumoVendas(lista, 'ea', 'tabelaEA');
+  renderResumoVendas(caros, 'nv', 'tabelaNV');
+}
+
+// KPIs + tabela de vendas (Estoque Antigo / Produtos caros)
+function renderResumoVendas(lista, prefixo, tabelaId) {
   const totalV   = lista.reduce((a, d) => a + d.vendido, 0);
   const totalC   = lista.reduce((a, d) => a + d.custo,   0);
   const totalR   = totalV - totalC;
@@ -1139,25 +1150,19 @@ function buildEstoque() {
   const markup   = totalC > 0 ? ((totalV - totalC) / totalC) * 100 : 0;
   const margem   = totalV > 0 ? ((totalV - totalC) / totalV) * 100 : 0;
 
-  set('ea-totalVendido', fmtR(totalV));
-  set('ea-totalCusto',   fmtR(totalC));
-  set('ea-resultado',    fmtR(totalR));
-  set('ea-markup',       'Markup ' + markup.toFixed(1) + '% · Margem ' + margem.toFixed(1) + '%');
-  set('ea-qtd',          totalQ.toString());
+  set(prefixo + '-totalVendido', fmtR(totalV));
+  set(prefixo + '-totalCusto',   fmtR(totalC));
+  set(prefixo + '-resultado',    fmtR(totalR));
+  set(prefixo + '-markup',       'Markup ' + markup.toFixed(1) + '% · Margem ' + margem.toFixed(1) + '%');
+  set(prefixo + '-qtd',          totalQ.toString());
 
-  const porMes = {};
-  lista.forEach(d => {
-    if (!porMes[d.mes]) porMes[d.mes] = { v: 0, c: 0, r: 0 };
-    porMes[d.mes].v += d.vendido; porMes[d.mes].c += d.custo; porMes[d.mes].r += d.res;
-  });
-  
-  const tb = document.getElementById('tabelaEA');
+  const tb = document.getElementById(tabelaId);
   if (tb) {
-    tb.innerHTML = lista.map(d => {
+    tb.innerHTML = lista.length ? lista.map(d => {
       const margPct = d.vendido > 0 ? ((d.res / d.vendido) * 100).toFixed(1) : 0;
       const bc = d.res >= 0 ? 'badge-green' : 'badge-red';
       return `<tr><td>${d.data}</td><td>${d.produto}</td><td>${fmtR(d.vendido)}</td><td>${fmtR(d.custo)}</td><td>${fmtR(d.res)}</td><td><span class="badge ${bc}">${margPct}%</span></td></tr>`;
-    }).join('');
+    }).join('') : '<tr><td colspan="6" style="text-align:center;color:#7a8a9a">Nenhuma venda registrada</td></tr>';
   }
 }
 
