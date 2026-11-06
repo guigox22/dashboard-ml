@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dashboard Vendas · Mercado Livre</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=20261106c" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" defer></script>
 </head>
 <body>
@@ -759,78 +759,87 @@
         </div>
 
         <div class="page" id="page-relatorio">
-          <p class="rel-intro">Devoluções, ocorrências e vendas vêm direto da planilha. Você só completa o que não está nela, confere a prévia e copia para o e-mail.</p>
+          <div class="card rel-topbar">
+            <div class="rel-top-left">
+              <div class="rel-kicker">Semana do relatório</div>
+              <div class="rel-period">
+                <button class="month-filter-btn" data-rel-semana="-1">← Semana passada</button>
+                <button class="month-filter-btn" data-rel-semana="0">Esta semana</button>
+                <span class="rel-dates">
+                  <input type="date" id="relIni" aria-label="Data inicial">
+                  <span>até</span>
+                  <input type="date" id="relFim" aria-label="Data final">
+                </span>
+              </div>
+            </div>
+            <div class="rel-status" id="relStatus"><span class="rel-dot"></span>Lendo a planilha…</div>
+          </div>
+
           <div class="rel-layout">
             <div class="rel-side">
               <div class="card">
-                <div class="card-title">1 · Período</div>
-                <div class="rel-row">
-                  <label class="rel-field">De<input type="date" id="relIni"></label>
-                  <label class="rel-field">Até<input type="date" id="relFim"></label>
-                </div>
-                <div class="rel-quick">
-                  <button class="month-filter-btn" data-rel-semana="0">Esta semana</button>
-                  <button class="month-filter-btn" data-rel-semana="-1">Semana passada</button>
-                </div>
+                <div class="rel-card-title"><span class="rel-num rel-num-ok">✓</span>Já vem da planilha</div>
+                <div class="rel-autolist" id="relAutoList"></div>
+                <details class="rel-mini-details">
+                  <summary>Corrigir vendas do Mercado Livre</summary>
+                  <label class="rel-field">Vendas Mercado Livre (semana)<input type="number" min="0" inputmode="numeric" id="relW_vendasML" data-rel-w="vendasML"><span class="rel-auto" id="relW_vendasML_auto"></span></label>
+                </details>
               </div>
 
-              <div class="card">
-                <div class="card-title">2 · Números da semana</div>
+              <div class="card rel-fill-card">
+                <div class="rel-card-title"><span class="rel-num">✎</span>Preencha você</div>
+                <div class="rel-sub">Só o que não existe na planilha. Fica salvo automaticamente.</div>
                 <div class="rel-grid">
-                  <label class="rel-field">Vendas Mercado Livre<input type="number" min="0" id="relW_vendasML" data-rel-w="vendasML"><span class="rel-auto" id="relW_vendasML_auto"></span></label>
-                  <label class="rel-field">Vendas Shopee<input type="number" min="0" id="relW_shopee" data-rel-w="shopee" placeholder="0"></label>
-                  <label class="rel-field">Vendas outros produtos<input type="number" min="0" id="relW_outras" data-rel-w="outras" placeholder="0"><span class="rel-auto">você adiciona à parte</span></label>
-                  <label class="rel-field">Desistências<input type="number" min="0" id="relW_desist" data-rel-w="desist" placeholder="preencher"></label>
-                  <label class="rel-field">Adicionados ao estoque<input type="number" min="0" id="relW_adic" data-rel-w="adic" placeholder="preencher"></label>
-                  <label class="rel-field">Total em estoque<input type="number" min="0" id="relW_estoque" data-rel-w="estoque" placeholder="preencher"></label>
+                  <label class="rel-field">Desistências<input type="number" min="0" inputmode="numeric" id="relW_desist" data-rel-w="desist"></label>
+                  <label class="rel-field">Adicionados ao estoque<input type="number" min="0" inputmode="numeric" id="relW_adic" data-rel-w="adic"></label>
+                  <label class="rel-field">Total em estoque<input type="number" min="0" inputmode="numeric" id="relW_estoque" data-rel-w="estoque"></label>
+                  <label class="rel-field">Vendas Shopee<input type="number" min="0" inputmode="numeric" id="relW_shopee" data-rel-w="shopee" placeholder="0"></label>
+                  <label class="rel-field rel-span2">Vendas de outros produtos<input type="number" min="0" inputmode="numeric" id="relW_outras" data-rel-w="outras" placeholder="0"></label>
                 </div>
-                <label class="rel-field rel-field-full">Recado para a equipe (opcional)<textarea id="relW_obs" data-rel-w="obs" rows="2" placeholder="Ex: semana com muitas devoluções de iPhone 11 por Face ID."></textarea></label>
-                <div class="rel-hint">Vendas do Mercado Livre são contadas na aba do mês (ex: “NOVEMBRO 2026”). Só digite se quiser corrigir o número.</div>
+                <label class="rel-field rel-field-full">Recado para a equipe <span class="rel-opt">(opcional)</span><textarea id="relW_obs" data-rel-w="obs" rows="2" placeholder="Ex: semana com muitas devoluções de iPhone 11 por Face ID."></textarea></label>
               </div>
 
               <div class="card">
                 <div class="rel-card-head">
-                  <div class="card-title" style="margin-bottom:0">3 · Itens da semana</div>
-                  <span class="rel-count" id="relItensCount">—</span>
-                </div>
-                <div class="rel-hint" style="margin:6px 0 10px">Desmarque o que não deve ir no e-mail. A observação aparece logo abaixo da resolução.</div>
-                <div id="relItens"></div>
-              </div>
-
-              <div class="card">
-                <div class="rel-card-head">
-                  <div class="card-title" style="margin-bottom:0">4 · Resumo do mês</div>
-                  <label class="rel-check"><input type="checkbox" id="relIncluirMes"> incluir no e-mail</label>
+                  <div class="rel-card-title" style="margin:0"><span class="rel-num">▦</span>Resumo do mês</div>
+                  <label class="rel-switch"><input type="checkbox" id="relIncluirMes"><span class="rel-switch-ui"></span><span>Incluir</span></label>
                 </div>
                 <div id="relMesBox">
-                  <label class="rel-field" style="margin-top:10px">Mês<select id="relMes"></select></label>
-                  <div class="rel-grid">
-                    <label class="rel-field">Vendas Mercado Livre<input type="number" min="0" id="relM_vendasML" data-rel-m="vendasML"><span class="rel-auto" id="relM_vendasML_auto"></span></label>
-                    <label class="rel-field">Vendas Shopee<input type="number" min="0" id="relM_shopee" data-rel-m="shopee"><span class="rel-auto" id="relM_shopee_auto"></span></label>
-                    <label class="rel-field">Vendas outros produtos<input type="number" min="0" id="relM_outras" data-rel-m="outras"><span class="rel-auto" id="relM_outras_auto"></span></label>
-                    <label class="rel-field">Devoluções<input type="number" min="0" id="relM_devol" data-rel-m="devol"><span class="rel-auto" id="relM_devol_auto"></span></label>
-                    <label class="rel-field">Desistências<input type="number" min="0" id="relM_desist" data-rel-m="desist"><span class="rel-auto" id="relM_desist_auto"></span></label>
-                    <label class="rel-field">Ocorrências<input type="number" min="0" id="relM_ocorr" data-rel-m="ocorr"><span class="rel-auto" id="relM_ocorr_auto"></span></label>
-                    <label class="rel-field">Adicionados ao estoque<input type="number" min="0" id="relM_adic" data-rel-m="adic"><span class="rel-auto" id="relM_adic_auto"></span></label>
-                  </div>
-                  <div class="rel-hint">O número em cinza é o calculado automaticamente (planilha + soma das semanas salvas). Digite por cima para corrigir.</div>
+                  <label class="rel-field" style="margin-top:10px">Mês do resumo<select id="relMes"></select></label>
+                  <details class="rel-mini-details">
+                    <summary>Corrigir números do mês</summary>
+                    <div class="rel-sub" style="margin:6px 0 8px">O número em cinza é o automático. Digite só se estiver diferente.</div>
+                    <div class="rel-grid">
+                      <label class="rel-field">Vendas Mercado Livre<input type="number" min="0" id="relM_vendasML" data-rel-m="vendasML"><span class="rel-auto" id="relM_vendasML_auto"></span></label>
+                      <label class="rel-field">Vendas Shopee<input type="number" min="0" id="relM_shopee" data-rel-m="shopee"><span class="rel-auto" id="relM_shopee_auto"></span></label>
+                      <label class="rel-field">Vendas outros produtos<input type="number" min="0" id="relM_outras" data-rel-m="outras"><span class="rel-auto" id="relM_outras_auto"></span></label>
+                      <label class="rel-field">Devoluções<input type="number" min="0" id="relM_devol" data-rel-m="devol"><span class="rel-auto" id="relM_devol_auto"></span></label>
+                      <label class="rel-field">Desistências<input type="number" min="0" id="relM_desist" data-rel-m="desist"><span class="rel-auto" id="relM_desist_auto"></span></label>
+                      <label class="rel-field">Ocorrências<input type="number" min="0" id="relM_ocorr" data-rel-m="ocorr"><span class="rel-auto" id="relM_ocorr_auto"></span></label>
+                      <label class="rel-field rel-span2">Adicionados ao estoque<input type="number" min="0" id="relM_adic" data-rel-m="adic"><span class="rel-auto" id="relM_adic_auto"></span></label>
+                    </div>
+                  </details>
                 </div>
               </div>
+
+              <details class="card rel-details">
+                <summary><span class="rel-card-title" style="margin:0"><span class="rel-num">☰</span>Ajustar itens <span class="rel-opt">(opcional)</span></span><span class="rel-count" id="relItensCount">—</span></summary>
+                <div class="rel-sub" style="margin:8px 0 10px">Desmarque o que não deve ir no relatório ou escreva uma observação.</div>
+                <div id="relItens"></div>
+              </details>
             </div>
 
             <div class="rel-main">
               <div class="card rel-preview-card">
-                <div class="rel-card-head rel-actions">
-                  <div class="card-title" style="margin-bottom:0">Prévia do e-mail</div>
-                  <div class="rel-btns">
-                    <button class="rel-btn rel-btn-primary" id="relCopiarHtml">📋 Copiar para o e-mail</button>
-                    <button class="rel-btn" id="relBaixarImg">🖼 Baixar imagem</button>
-                    <button class="rel-btn" id="relCopiarImg">Copiar imagem</button>
-                    <button class="rel-btn" id="relCopiarTexto">Copiar texto</button>
-                  </div>
+                <div class="rel-actions">
+                  <button class="rel-btn rel-btn-primary" id="relBaixarImg">⬇ Baixar imagem</button>
+                  <button class="rel-btn" id="relCopiarImg">Copiar imagem</button>
+                  <button class="rel-btn" id="relCopiarHtml">Copiar para o e-mail</button>
+                  <button class="rel-btn" id="relCopiarTexto">Copiar texto</button>
                 </div>
+                <div class="rel-check-line" id="relFaltando"></div>
                 <div class="rel-toast" id="relToast"></div>
-                <div class="rel-preview" id="relPreview"><div class="rel-hint">Carregando dados…</div></div>
+                <div class="rel-preview" id="relPreview"><div class="rel-empty">Lendo a planilha…</div></div>
               </div>
             </div>
           </div>
@@ -862,7 +871,7 @@
     });
   })();
 </script>
-<script src="app.js"></script>
-<script src="relatorio.js"></script>
+<script src="app.js?v=20261106c"></script>
+<script src="relatorio.js?v=20261106c"></script>
 </body>
 </html>

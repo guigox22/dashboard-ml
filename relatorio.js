@@ -86,7 +86,7 @@ function relLoadMonth(ano, mesIdx, force) {
     .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
     .then(text => {
       const rows = [];
-      parseCSVFull(text).forEach(r => {
+      relParseCSV(text).forEach(r => {
         const venda = (r[1] || '').trim();
         if (!venda.startsWith('#')) return;
         const m = (r[0] || '').trim().toLowerCase().match(/^(\d{1,2})\s+([a-zç]{3})/);
@@ -120,10 +120,36 @@ function relMonthsBetween(ini, fim) {
   return out;
 }
 
+// CSV com suporte a aspas e quebras de linha dentro das células (independente
+// do app.js, para a página funcionar mesmo se o navegador tiver uma versão
+// antiga dele em cache).
+function relParseCSV(text) {
+  const rows = [];
+  let row = [], cell = '', inside = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inside) {
+      if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else inside = false; }
+      else cell += ch;
+    } else if (ch === '"') inside = true;
+    else if (ch === ',') { row.push(cell.trim()); cell = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell.trim()); rows.push(row); row = []; cell = '';
+    } else cell += ch;
+  }
+  if (cell !== '' || row.length) { row.push(cell.trim()); rows.push(row); }
+  return rows;
+}
+
 // ── inicialização ───────────────────────────────────────────────────────────
+let relDataLoaded = false;
+let relLastSync = null;
+
 function renderRelatorio(opts = {}) {
   const page = document.getElementById('page-relatorio');
   if (!page) return;
+  if (opts.reload) { relDataLoaded = true; relLastSync = new Date(); }
 
   if (!relInit) {
     relInit = true;
@@ -138,6 +164,52 @@ function renderRelatorio(opts = {}) {
     Object.keys(relMonthCache).forEach(k => delete relMonthCache[k]);
     relRecompute();
   }
+}
+
+// Inicializa sozinho (não depende do app.js chamar) e recalcula ao abrir a aba.
+document.addEventListener('DOMContentLoaded', () => {
+  renderRelatorio();
+  const nav = document.querySelector('.nav-item[data-page="relatorio"]');
+  if (nav) nav.addEventListener('click', () => {
+    if (!relDataLoaded && typeof ocorrencias !== 'undefined' && ocorrencias.length) { relDataLoaded = true; relLastSync = new Date(); }
+    relRecompute();
+  });
+});
+
+function relRenderStatus(text, kind) {
+  const el = document.getElementById('relStatus');
+  if (!el) return;
+  el.className = 'rel-status' + (kind ? ' rel-status-' + kind : '');
+  el.innerHTML = `<span class="rel-dot"></span>${text}`;
+}
+
+function relRenderAutoList() {
+  const el = document.getElementById('relAutoList');
+  if (!el || !relState) return;
+  const loading = '<span class="rel-auto-loading">lendo…</span>';
+  const ml = relState.vendasSemana != null ? relN(relState.vendasSemana)
+    : (relState.abasFaltando && relState.abasFaltando.length ? '<span class="rel-auto-warn">aba não encontrada</span>' : loading);
+  const w = relState.range ? relStoreGet(relWeekKey(relState.range.iniISO, relState.range.fimISO)) : {};
+  const mlCorr = relNumOrNull(w.vendasML);
+  const linha = (cor, label, val, sub) => `<div class="rel-auto-row"><span class="rel-auto-dot" style="background:${cor}"></span><span class="rel-auto-label">${label}${sub ? `<small>${sub}</small>` : ''}</span><b>${val}</b></div>`;
+  el.innerHTML =
+    linha('#2ab5b5', 'Vendas Mercado Livre', mlCorr != null ? relN(mlCorr) : ml, mlCorr != null ? 'corrigido por você' : 'aba do mês, 2 contas') +
+    linha('#ef4444', 'Devoluções', relDataLoaded ? relN(relState.devolucoes.length) : loading, 'aba Ocorrências') +
+    linha('#3b82f6', 'Ocorrências', relDataLoaded ? relN(relState.ocorrList.length) : loading, 'aba Ocorrências');
+}
+
+function relRenderFaltando(d) {
+  const el = document.getElementById('relFaltando');
+  if (!el) return;
+  const falta = [];
+  if (d.semana.desist == null) falta.push('Desistências');
+  if (d.semana.adic == null) falta.push('Adicionados ao estoque');
+  if (d.semana.estoque == null) falta.push('Total em estoque');
+  if (d.semana.vendasML == null) falta.push('Vendas Mercado Livre');
+  el.className = 'rel-check-line ' + (falta.length ? 'rel-check-warn' : 'rel-check-ok');
+  el.innerHTML = falta.length
+    ? `<b>Falta preencher:</b> ${falta.join(', ')}`
+    : '<b>✓ Tudo preenchido.</b> Pode baixar a imagem ou copiar para o e-mail.';
 }
 
 function relBindEvents() {
@@ -156,6 +228,7 @@ function relBindEvents() {
     obj[el.getAttribute('data-rel-w')] = el.value;
     relStoreSet(key, obj);
     relUpdateMonthAutos();
+    relRenderAutoList();
     relRenderPreview();
   }));
 
@@ -282,9 +355,14 @@ async function relRecompute() {
   const devolucoes = lista.filter(o => o.categoria === 'Devolução');
   const ocorrList  = lista.filter(o => o.categoria !== 'Devolução');
 
-  relState = Object.assign(relState || {}, { range: r, devolucoes, ocorrList, vendasSemana: null, vendasSemanaOk: false });
+  if (!relDataLoaded && typeof ocorrencias !== 'undefined' && ocorrencias.length) { relDataLoaded = true; relLastSync = new Date(); }
+  // Planilha ainda não chegou: tenta de novo em instantes (sem depender do app.js avisar)
+  if (!relDataLoaded) setTimeout(() => { if (token === relToken) relRecompute(); }, 1500);
+  relState = Object.assign(relState || {}, { range: r, devolucoes, ocorrList, vendasSemana: null, vendasSemanaOk: false, abasFaltando: [] });
   relRenderItems();
+  relRenderAutoList();
   relRenderPreview();
+  relRenderStatus('Lendo a planilha…', 'loading');
 
   // Vendas da semana (pode cruzar dois meses)
   const meses = relMonthsBetween(r.ini, r.fim);
@@ -314,7 +392,12 @@ async function relRecompute() {
   relState.mesAbaOk = resMes.ok;
 
   relUpdateMonthAutos();
+  relRenderAutoList();
   relRenderPreview();
+  const hora = (relLastSync || new Date()).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  if (!relDataLoaded) relRenderStatus('Lendo a planilha…', 'loading');
+  else if (relState.abasFaltando.length) relRenderStatus(`Aba “${relState.abasFaltando.join('”, “')}” não encontrada — digite as vendas em “Corrigir vendas”`, 'warn');
+  else relRenderStatus(`Planilha lida às ${hora}`, 'ok');
 }
 
 function relMonthAuto() {
@@ -767,7 +850,10 @@ function relBuildText(d) {
 function relRenderPreview() {
   const el = document.getElementById('relPreview');
   if (!el || !relState || !relState.range) return;
-  el.innerHTML = relBuildEmailHtml(relCollect());
+  if (!relDataLoaded) { el.innerHTML = '<div class="rel-empty">Lendo a planilha…</div>'; return; }
+  const d = relCollect();
+  el.innerHTML = relBuildEmailHtml(d);
+  relRenderFaltando(d);
 }
 
 function relToast(msg) {
@@ -778,6 +864,7 @@ function relToast(msg) {
 }
 
 async function relCopyHtml() {
+  if (!relDataLoaded || !relState) { relToast('Aguarde um instante: a planilha ainda está carregando.'); return; }
   const d = relCollect();
   const html = relBuildEmailHtml(d);
   const txt = relBuildText(d);
@@ -799,6 +886,7 @@ async function relCopyHtml() {
 }
 
 async function relCopyText() {
+  if (!relDataLoaded || !relState) { relToast('Aguarde um instante: a planilha ainda está carregando.'); return; }
   const txt = relBuildText(relCollect());
   try { await navigator.clipboard.writeText(txt); relToast('Texto copiado!'); }
   catch (e) {
@@ -819,7 +907,8 @@ function relLoadHtml2Canvas() {
       const sc = document.createElement('script');
       sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
       sc.onload = () => resolve(window.html2canvas);
-      sc.onerror = () => { relH2CPromise = null; reject(new Error('Falha ao carregar html2canvas')); };
+      sc.onerror = () => { relH2CPromise = null; reject(new Error('sem conexão para carregar o gerador de imagem')); };
+      setTimeout(() => { if (!window.html2canvas) { relH2CPromise = null; reject(new Error('o gerador de imagem demorou para carregar, tente de novo')); } }, 15000);
       document.head.appendChild(sc);
     });
   }
@@ -854,6 +943,7 @@ async function relWithBusy(btnId, fn) {
 }
 
 function relDownloadImage() {
+  if (!relDataLoaded || !relState) { relToast('Aguarde um instante: a planilha ainda está carregando.'); return; }
   return relWithBusy('relBaixarImg', async () => {
     const blob = await relRenderPng();
     const a = document.createElement('a');
@@ -866,6 +956,7 @@ function relDownloadImage() {
 }
 
 function relCopyImage() {
+  if (!relDataLoaded || !relState) { relToast('Aguarde um instante: a planilha ainda está carregando.'); return; }
   return relWithBusy('relCopiarImg', async () => {
     const blob = await relRenderPng();
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
