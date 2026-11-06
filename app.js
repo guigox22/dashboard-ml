@@ -29,6 +29,7 @@ const PAGE_TITLES = {
   caros:    'Produtos caros - Novembro',
   ocorrencias: 'Ocorrências e Devolução',
   estoqueTempo: 'Tempo de Produtos no Estoque',
+  relatorio: 'Relatório Semanal',
 };
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
@@ -279,7 +280,8 @@ function statusResolucao(o) {
 
 function processOcorrenciasCSV(text) {
   ocorrencias = [];
-  const lines = text.split('\n').map(parseCSVLine);
+  // parseCSVFull respeita quebras de linha dentro de células (ex: descrições longas)
+  const lines = parseCSVFull(text);
   for (let i = 1; i < lines.length; i++) {
     const r = lines[i];
     if (!r || r.length < 3) continue;
@@ -908,6 +910,7 @@ async function loadData(opts = {}) {
     renderOcorrenciasPage();
     renderDevolucoesVisao();
     renderEstoqueTempoPage();
+    if (typeof renderRelatorio === 'function') renderRelatorio({ reload: true });
 
     if (!silent) {
       loadingEl.style.display    = 'none';
@@ -950,6 +953,29 @@ function parseCSVLine(line) {
   }
   cells.push(cell.trim());
   return cells;
+}
+
+// Parser de CSV completo: suporta aspas, aspas escapadas ("") e quebras de
+// linha dentro de células. Retorna uma matriz de linhas → células.
+function parseCSVFull(text) {
+  const rows = [];
+  let row = [], cell = '', inside = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inside) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { cell += '"'; i++; }
+        else inside = false;
+      } else cell += ch;
+    } else if (ch === '"') inside = true;
+    else if (ch === ',') { row.push(cell.trim()); cell = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell.trim()); rows.push(row); row = []; cell = '';
+    } else cell += ch;
+  }
+  if (cell !== '' || row.length) { row.push(cell.trim()); rows.push(row); }
+  return rows;
 }
 
 function processCSV(text) {
