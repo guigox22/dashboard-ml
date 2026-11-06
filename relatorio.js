@@ -185,6 +185,8 @@ function relBindEvents() {
 
   document.getElementById('relCopiarHtml').addEventListener('click', relCopyHtml);
   document.getElementById('relCopiarTexto').addEventListener('click', relCopyText);
+  document.getElementById('relBaixarImg').addEventListener('click', relDownloadImage);
+  document.getElementById('relCopiarImg').addEventListener('click', relCopyImage);
 }
 
 function relGetRange() {
@@ -295,9 +297,14 @@ async function relRecompute() {
   if (token !== relToken) return;
 
   const okSemana = resSemana.every(x => x.ok);
-  const vendasSemana = resSemana.flatMap(x => x.rows)
-    .filter(v => v.date >= r.ini && v.date <= r.fimEnd)
-    .reduce((a, v) => a + v.qtd, 0);
+  const rowsSemana = resSemana.flatMap(x => x.rows).filter(v => v.date >= r.ini && v.date <= r.fimEnd);
+  const vendasSemana = rowsSemana.reduce((a, v) => a + v.qtd, 0);
+  const dias = [];
+  for (let d = new Date(r.ini); d <= r.fim; d.setDate(d.getDate() + 1)) {
+    const iso = relISO(d);
+    dias.push({ date: new Date(d), qtd: rowsSemana.filter(v => relISO(v.date) === iso).reduce((a, v) => a + v.qtd, 0) });
+  }
+  relState.vendasPorDia = okSemana ? dias : null;
   relState.vendasSemana = okSemana ? vendasSemana : null;
   relState.vendasSemanaOk = okSemana;
   relState.abasFaltando = resSemana.filter(x => !x.ok).map(x => x.nome);
@@ -319,6 +326,7 @@ function relMonthAuto() {
     mk, ano, mesIdx: mm - 1,
     vendasML: relState && relState.mesVendas != null ? relState.mesVendas : null,
     shopee: relSumWeeks(mk, 'shopee'),
+    outras: relSumWeeks(mk, 'outras'),
     devol: devMes.length,
     ocorr: doMes.length - devMes.length,
     desist: relSumWeeks(mk, 'desist'),
@@ -338,6 +346,7 @@ function relUpdateMonthAutos() {
   setAuto('relM_vendasML', a.vendasML,
     relState && relState.mesAbaOk === false ? `aba “${relState.mesAbaNome}” não encontrada` : `aba ${relState ? relState.mesAbaNome || '' : ''}`);
   setAuto('relM_shopee', a.shopee.total, `soma de ${a.shopee.semanas} semana(s)`);
+  setAuto('relM_outras', a.outras.total, `soma de ${a.outras.semanas} semana(s)`);
   setAuto('relM_devol', a.devol, 'aba Ocorrências');
   setAuto('relM_ocorr', a.ocorr, 'aba Ocorrências');
   setAuto('relM_desist', a.desist.total, `soma de ${a.desist.semanas} semana(s)`);
@@ -367,6 +376,8 @@ function relCollect() {
   const semana = {
     vendasML: pick(w.vendasML, relState.vendasSemana),
     shopee: pick(w.shopee, 0),
+    outras: pick(w.outras, 0),
+    vendasPorDia: relState.vendasPorDia,
     desist: relNumOrNull(w.desist),
     adic: relNumOrNull(w.adic),
     estoque: relNumOrNull(w.estoque),
@@ -376,6 +387,7 @@ function relCollect() {
   };
   semana.devolTotal = relState.devolucoes.length;
   semana.ocorrTotal = relState.ocorrList.length;
+  semana.vendasTotal = semana.vendasML == null ? null : semana.vendasML + (semana.shopee || 0) + (semana.outras || 0);
 
   let mes = null;
   if (document.getElementById('relIncluirMes').checked) {
@@ -385,13 +397,14 @@ function relCollect() {
       nome: MESES_PT[a.mesIdx], ano: a.ano,
       vendasML: pick(m.vendasML, a.vendasML),
       shopee: pick(m.shopee, a.shopee.total),
+      outras: pick(m.outras, a.outras.total),
       devol: pick(m.devol, a.devol),
       desist: pick(m.desist, a.desist.semanas ? a.desist.total : null),
       ocorr: pick(m.ocorr, a.ocorr),
       adic: pick(m.adic, a.adic.semanas ? a.adic.total : null),
       valorDevolvido: a.valorDevolvido,
     };
-    mes.vendasTotal = (mes.vendasML || 0) + (mes.shopee || 0);
+    mes.vendasTotal = (mes.vendasML || 0) + (mes.shopee || 0) + (mes.outras || 0);
   }
   return { r, semana, mes };
 }
@@ -422,93 +435,150 @@ function relRenderItems() {
   }).join('');
 }
 
-// ── e-mail (HTML com estilos inline, compatível com Gmail/Outlook) ───────────
+// ── e-mail / imagem (HTML com estilos inline, compatível com Gmail/Outlook) ──
 const REL_C = {
   text: '#1a2332', muted: '#5a6a7a', soft: '#7a8a9a', line: '#e4eaef', bg: '#f4f7f9',
-  green: '#1a7a45', teal: '#2ab5b5', red: '#b91c1c', redBg: '#fdecec', amber: '#92400e', amberBg: '#fef3c7',
-  blue: '#1d4ed8', blueBg: '#e8f0fe', okBg: '#e7f6ee',
+  green: '#1a7a45', greenBar: '#3cb878', teal: '#2ab5b5', red: '#b91c1c', redBar: '#ef4444', redBg: '#fdecec',
+  amber: '#92400e', amberBar: '#f59e0b', amberBg: '#fef3c7',
+  blue: '#1d4ed8', blueBar: '#3b82f6', blueBg: '#e8f0fe', okBg: '#e7f6ee', purple: '#7c3aed',
 };
+const REL_DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
-function relTile(label, value, sub, color) {
+function relTile(label, value, sub, color, accent) {
   return `<td width="25%" valign="top" style="padding:5px">
-    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border:1px solid ${REL_C.line};border-radius:8px;background:#ffffff">
-      <tr><td style="padding:12px 12px 11px">
-        <div style="font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:${REL_C.soft};font-weight:bold">${label}</div>
-        <div style="font-size:26px;line-height:1.15;font-weight:bold;color:${color || REL_C.text};margin-top:4px">${value}</div>
-        <div style="font-size:11px;color:${REL_C.soft};margin-top:2px">${sub || '&nbsp;'}</div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border:1px solid ${REL_C.line};border-top:3px solid ${accent || REL_C.line};border-radius:8px;background:#ffffff">
+      <tr><td style="padding:11px 12px 10px">
+        <div style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:${REL_C.soft};font-weight:bold">${label}</div>
+        <div style="font-size:28px;line-height:1.1;font-weight:bold;color:${color || REL_C.text};margin-top:5px">${value}</div>
+        <div style="font-size:11px;color:${REL_C.soft};margin-top:3px">${sub || '&nbsp;'}</div>
       </td></tr>
     </table>
   </td>`;
 }
 
 function relBadge(txt, fg, bg) {
-  return `<span style="display:inline-block;font-size:10.5px;font-weight:bold;color:${fg};background:${bg};border-radius:999px;padding:2px 9px;margin-left:6px;white-space:nowrap">${relEsc(txt)}</span>`;
+  return `<span style="display:inline-block;font-size:10.5px;font-weight:bold;color:${fg};background:${bg};border-radius:999px;padding:2px 9px;white-space:nowrap">${relEsc(txt)}</span>`;
 }
 
 function relStatusBadge(o) {
   const st = statusResolucao(o);
-  if (st.key === 'reembolsado') return relBadge('Reembolsado', REL_C.green, REL_C.okBg);
-  if (st.key === 'pendente') return relBadge('Aguardando chegar', REL_C.amber, REL_C.amberBg);
-  return '';
+  if (st.key === 'reembolsado') return relBadge('✓ Reembolsado', REL_C.green, REL_C.okBg);
+  if (st.key === 'pendente') return relBadge('⏳ Aguardando chegar', REL_C.amber, REL_C.amberBg);
+  return relBadge('Em andamento', REL_C.muted, REL_C.bg);
 }
 
-function relSectionTitle(txt, count, color) {
-  return `<tr><td style="padding:22px 24px 8px">
-    <div style="font-size:15px;font-weight:bold;color:${REL_C.text};border-left:4px solid ${color};padding-left:10px">${txt} <span style="color:${REL_C.soft};font-weight:normal">(${count})</span></div>
-  </td></tr>`;
-}
-
-function relRow(label, html) {
-  if (!html) return '';
-  return `<div style="font-size:13px;line-height:1.5;color:${REL_C.text};margin-top:6px"><span style="color:${REL_C.muted};font-weight:bold">${label}:</span> ${html}</div>`;
-}
-
-function relItemCard(o, isDev) {
-  const s = relStoreGet(relItemKey(o));
-  const cor = isDev ? '#ef4444' : '#3b82f6';
-  const metaParts = [
-    `<b style="color:${REL_C.text}">OS ${relEsc(o.os || '—')}</b>`,
-    relDMY(o.data),
-    o.precoVenda != null ? 'Venda ' + relMoney(o.precoVenda) : '',
-    o.freteDevolucao != null ? 'Frete devolução ' + relMoney(o.freteDevolucao) : '',
-  ].filter(Boolean).join(' &nbsp;·&nbsp; ');
-
-  let troca = '';
-  if (!isDev) {
-    const linhas = [];
-    if (o.custoPrimeiro != null) linhas.push('Custo do 1º aparelho: ' + relMoney(o.custoPrimeiro));
-    if (o.ocorrencia1) linhas.push(relEsc(o.ocorrencia1) + (o.custo1 != null ? ' — ' + relMoney(o.custo1) : ''));
-    if (o.ocorrencia2) linhas.push(relEsc(o.ocorrencia2) + (o.custo2 != null ? ' — ' + relMoney(o.custo2) : ''));
-    if (linhas.length) troca = relRow('Troca / envio', linhas.join('<br>'));
-  }
-
-  return `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border:1px solid ${REL_C.line};border-left:4px solid ${cor};border-radius:8px;margin:0 0 10px;background:#ffffff">
-    <tr><td style="padding:12px 14px">
-      <div style="font-size:14px;font-weight:bold;color:${REL_C.text}">${relEsc(o.produto || 'Produto não informado')}${relBadge(relSubtipo(o.tipo), isDev ? REL_C.red : REL_C.blue, isDev ? REL_C.redBg : REL_C.blueBg)}</div>
-      <div style="font-size:12px;color:${REL_C.muted};margin-top:3px">${metaParts}</div>
-      ${relRow('Descrição', relEscBr(o.defeito))}
-      ${troca}
-      ${relRow('Resolução', (o.resolucao ? relEscBr(o.resolucao) : '—') + ' ' + relStatusBadge(o))}
-      ${s.obs ? `<div style="font-size:12.5px;line-height:1.5;color:${REL_C.amber};background:${REL_C.amberBg};border-radius:6px;padding:7px 10px;margin-top:8px"><b>Obs:</b> ${relEscBr(s.obs)}</div>` : ''}
+function relPanel(title, inner) {
+  return `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border:1px solid ${REL_C.line};border-radius:10px;background:#ffffff">
+    <tr><td style="padding:13px 14px 12px">
+      <div style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:${REL_C.muted};font-weight:bold;margin-bottom:10px">${title}</div>
+      ${inner}
     </td></tr>
   </table>`;
 }
 
-function relBar(pct, color) {
-  const w = pct == null ? 0 : Math.max(2, Math.min(100, pct));
-  return `<table width="110" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:${REL_C.bg};border-radius:4px"><tr>
-    <td width="${w}%" style="background:${color};height:8px;font-size:0;line-height:0;border-radius:4px">&nbsp;</td>${w < 100 ? '<td style="font-size:0;line-height:0">&nbsp;</td>' : ''}
-  </tr></table>`;
+function relSectionTitle(txt, count, color, extra) {
+  return `<tr><td style="padding:22px 24px 10px">
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
+      <td style="font-size:16px;font-weight:bold;color:${REL_C.text}">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${color};margin-right:8px"></span>${txt}
+        <span style="display:inline-block;font-size:12px;color:#ffffff;background:${color};border-radius:999px;padding:1px 9px;margin-left:6px;vertical-align:2px">${count}</span>
+      </td>
+      <td align="right" style="font-size:12px;color:${REL_C.soft}">${extra || ''}</td>
+    </tr></table>
+  </td></tr>`;
 }
 
-function relMesRow(label, qtd, base, color, bold) {
-  const pct = base && qtd != null && color ? relPctNum(qtd, base) : null;
-  return `<tr>
-    <td style="padding:9px 10px;border-bottom:1px solid ${REL_C.line};font-size:13px;color:${REL_C.text};${bold ? 'font-weight:bold' : ''}">${label}</td>
-    <td align="right" style="padding:9px 10px;border-bottom:1px solid ${REL_C.line};font-size:14px;font-weight:bold;color:${color || REL_C.text}">${qtd == null ? '<span style="color:#b0bac4;font-weight:normal">não informado</span>' : relN(qtd)}</td>
-    <td align="right" style="padding:9px 10px;border-bottom:1px solid ${REL_C.line};font-size:13px;font-weight:bold;color:${color || REL_C.soft}">${pct != null ? relPct(qtd, base) : ''}</td>
-    <td style="padding:9px 10px;border-bottom:1px solid ${REL_C.line}">${pct != null ? relBar(pct, color) : ''}</td>
-  </tr>`;
+// Barras verticais: vendas por dia
+function relDayChart(dias) {
+  if (!dias || !dias.length) return `<div style="font-size:12px;color:${REL_C.soft}">Sem dados de vendas por dia.</div>`;
+  const max = Math.max(1, ...dias.map(d => d.qtd));
+  const H = 84;
+  const cols = dias.map(d => {
+    const h = d.qtd ? Math.max(8, Math.round(d.qtd / max * H)) : 3;
+    return `<td align="center" valign="bottom" style="padding:0 4px;height:${H + 18}px">
+      <div style="font-size:12px;font-weight:bold;color:${d.qtd ? REL_C.text : '#b0bac4'};margin-bottom:3px">${d.qtd}</div>
+      <div style="height:${h}px;background:${d.qtd ? REL_C.greenBar : REL_C.line};border-radius:4px 4px 0 0;font-size:0;line-height:0">&nbsp;</div>
+    </td>`;
+  }).join('');
+  const labels = dias.map(d => `<td align="center" style="padding:5px 2px 0;font-size:10.5px;color:${REL_C.soft};border-top:1px solid ${REL_C.line}"><b style="color:${REL_C.muted}">${REL_DIAS[d.date.getDay()]}</b><br>${relDM(d.date)}</td>`).join('');
+  return `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;table-layout:fixed"><tr>${cols}</tr><tr>${labels}</tr></table>`;
+}
+
+// Barras horizontais: [{label, qtd, color}]
+function relHBars(items, total) {
+  if (!items.length) return `<div style="font-size:12px;color:${REL_C.soft}">Nada nesta semana.</div>`;
+  return `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">${items.map(it => {
+    const w = total ? Math.max(4, Math.round(it.qtd / total * 100)) : 0;
+    return `<tr>
+      <td style="font-size:12px;color:${REL_C.text};padding:4px 8px 4px 0;white-space:nowrap" width="1%">${relEsc(it.label)}</td>
+      <td style="padding:4px 0">
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:${REL_C.bg};border-radius:5px"><tr>
+          <td width="${w}%" style="background:${it.color};height:14px;border-radius:5px;font-size:0;line-height:0">&nbsp;</td>${w < 100 ? '<td style="font-size:0;line-height:0">&nbsp;</td>' : ''}
+        </tr></table>
+      </td>
+      <td align="right" width="1%" style="font-size:12.5px;font-weight:bold;color:${REL_C.text};padding:4px 0 4px 8px;white-space:nowrap">${it.qtd}</td>
+    </tr>`;
+  }).join('')}</table>`;
+}
+
+function relAgrupar(lista, fnLabel, cores) {
+  const map = new Map();
+  lista.forEach(o => { const k = fnLabel(o); map.set(k, (map.get(k) || 0) + 1); });
+  const palette = cores || ['#ef4444', '#f59e0b', '#8b5cf6', '#3b82f6', '#14b8a6', '#64748b'];
+  return [...map.entries()].sort((a, b) => b[1] - a[1]).map(([label, qtd], i) => ({ label, qtd, color: palette[i % palette.length] }));
+}
+
+function relItemCard(o, isDev, n) {
+  const s = relStoreGet(relItemKey(o));
+  const fg = isDev ? REL_C.red : REL_C.blue, bg = isDev ? REL_C.redBg : REL_C.blueBg;
+  const meta = [`OS <b style="color:${REL_C.text}">${relEsc(o.os || '—')}</b>`, relDMY(o.data)].join(' &nbsp;·&nbsp; ');
+
+  let troca = '';
+  if (!isDev) {
+    const linhas = [];
+    if (o.ocorrencia1) linhas.push('↪ ' + relEsc(o.ocorrencia1) + (o.custo1 != null ? ` <b>${relMoney(o.custo1)}</b>` : ''));
+    if (o.ocorrencia2) linhas.push('↪ ' + relEsc(o.ocorrencia2) + (o.custo2 != null ? ` <b>${relMoney(o.custo2)}</b>` : ''));
+    if (o.custoPrimeiro != null) linhas.push(`Custo do 1º aparelho: <b>${relMoney(o.custoPrimeiro)}</b>`);
+    if (linhas.length) troca = `<div style="font-size:12px;line-height:1.5;color:${REL_C.blue};background:${REL_C.blueBg};border-radius:6px;padding:6px 9px;margin-top:7px">${linhas.join('<br>')}</div>`;
+  }
+
+  return `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border:1px solid ${REL_C.line};border-radius:10px;margin:0 0 8px;background:#ffffff">
+    <tr>
+      <td width="44" valign="top" style="padding:12px 0 12px 12px">
+        <div style="width:30px;height:30px;border-radius:15px;background:${bg};color:${fg};font-weight:bold;font-size:13px;line-height:30px;text-align:center">${n}</div>
+      </td>
+      <td valign="top" style="padding:11px 10px 11px 6px">
+        <div style="font-size:14px;font-weight:bold;color:${REL_C.text};line-height:1.3">${relEsc(o.produto || 'Produto não informado')}</div>
+        <div style="margin-top:4px">${relBadge(relSubtipo(o.tipo), fg, bg)} <span style="font-size:11.5px;color:${REL_C.soft};margin-left:4px">${meta}</span></div>
+        ${o.defeito ? `<div style="font-size:12.5px;line-height:1.5;color:${REL_C.muted};margin-top:7px">“${relEscBr(o.defeito)}”</div>` : ''}
+        ${troca}
+        ${o.resolucao ? `<div style="font-size:12px;line-height:1.45;color:${REL_C.text};margin-top:7px"><b style="color:${REL_C.muted}">Resolução:</b> ${relEscBr(o.resolucao)}</div>` : ''}
+        ${s.obs ? `<div style="font-size:12px;line-height:1.5;color:${REL_C.amber};background:${REL_C.amberBg};border-radius:6px;padding:6px 9px;margin-top:7px"><b>Obs:</b> ${relEscBr(s.obs)}</div>` : ''}
+      </td>
+      <td width="130" valign="top" align="right" style="padding:12px 12px 12px 0">
+        ${relStatusBadge(o)}
+        ${o.precoVenda != null ? `<div style="font-size:15px;font-weight:bold;color:${REL_C.text};margin-top:8px">${relMoney(o.precoVenda)}</div><div style="font-size:10.5px;color:${REL_C.soft}">valor da venda</div>` : ''}
+        ${o.freteDevolucao != null ? `<div style="font-size:11px;color:${REL_C.red};margin-top:4px">frete ${relMoney(o.freteDevolucao)}</div>` : ''}
+      </td>
+    </tr>
+  </table>`;
+}
+
+function relRateTile(label, qtd, base, color, bg) {
+  const pct = qtd != null && base ? relPctNum(qtd, base) : null;
+  const w = pct == null ? 0 : Math.max(3, Math.min(100, Math.round(pct)));
+  return `<td width="33%" valign="top" style="padding:5px">
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-radius:10px;background:${bg}">
+      <tr><td style="padding:13px 14px 12px">
+        <div style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:${color};font-weight:bold">${label}</div>
+        <div style="font-size:30px;line-height:1.1;font-weight:bold;color:${color};margin-top:5px">${pct == null ? '—' : relPct(qtd, base)}</div>
+        <div style="font-size:11.5px;color:${REL_C.muted};margin:3px 0 9px">${qtd == null ? 'não informado' : `${relN(qtd)} de ${relN(base)} vendas`}</div>
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:rgba(255,255,255,.75);border-radius:4px"><tr>
+          ${w ? `<td width="${w}%" style="background:${color};height:7px;border-radius:4px;font-size:0;line-height:0">&nbsp;</td>` : ''}${w < 100 ? '<td style="height:7px;font-size:0;line-height:0">&nbsp;</td>' : ''}
+        </tr></table>
+      </td></tr>
+    </table>
+  </td>`;
 }
 
 function relBuildEmailHtml(d) {
@@ -516,86 +586,123 @@ function relBuildEmailHtml(d) {
   const periodo = `${relDM(r.ini)} a ${relDMY(r.fim)}`;
   const saud = (() => { const h = new Date().getHours(); return h < 12 ? 'bom dia' : h < 18 ? 'boa tarde' : 'boa noite'; })();
   const nn = v => (v == null ? '<span style="color:#b0bac4">—</span>' : relN(v));
+  const valorDev = s.devolucoes.reduce((a, o) => a + (o.precoVenda || 0), 0);
+  const subVendas = [`ML ${relN(s.vendasML)}`, s.shopee ? `Shopee ${relN(s.shopee)}` : '', s.outras ? `Outros ${relN(s.outras)}` : ''].filter(Boolean).join(' · ');
+
+  const motivos = relAgrupar(s.devolucoes, o => relSubtipo(o.tipo));
+  const situacao = relAgrupar(s.devolucoes, o => {
+    const k = statusResolucao(o).key;
+    return k === 'reembolsado' ? 'Reembolsado' : k === 'pendente' ? 'Aguardando chegar' : 'Em andamento';
+  }).map(it => Object.assign(it, { color: it.label === 'Reembolsado' ? REL_C.greenBar : it.label === 'Aguardando chegar' ? REL_C.amberBar : '#94a3b8' }));
 
   let html = `<div style="background:${REL_C.bg};padding:16px 0;font-family:Arial,Helvetica,sans-serif">
-  <table align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;border-collapse:separate;background:#ffffff;border:1px solid ${REL_C.line};border-radius:12px;font-family:Arial,Helvetica,sans-serif;color:${REL_C.text}">
-    <tr><td style="background-color:${REL_C.teal};background-image:linear-gradient(135deg,#3cb878 0%,#2ab5b5 100%);padding:22px 24px;border-radius:12px 12px 0 0">
-      <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#e9fff7;font-weight:bold">Relatório semanal${mes ? ' + resumo do mês' : ''}</div>
-      <div style="font-size:24px;font-weight:bold;color:#ffffff;margin-top:4px">${periodo}</div>
-      <div style="font-size:12.5px;color:#e9fff7;margin-top:2px">Vendas, devoluções e ocorrências</div>
-    </td></tr>
-    <tr><td style="padding:20px 24px 6px;font-size:14px;line-height:1.6">
-      Olá pessoal, ${saud}. Tudo bem?<br>Segue o relatório semanal.
-    </td></tr>
-    ${s.obs ? `<tr><td style="padding:6px 24px 0"><div style="font-size:13px;line-height:1.55;background:${REL_C.bg};border-radius:8px;padding:10px 12px">${relEscBr(s.obs)}</div></td></tr>` : ''}
-
-    <tr><td style="padding:14px 19px 0">
-      <div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:${REL_C.muted};font-weight:bold;padding:0 5px 4px">Vendas e estoque</div>
+  <table align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:720px;border-collapse:separate;background:#ffffff;border:1px solid ${REL_C.line};border-radius:14px;font-family:Arial,Helvetica,sans-serif;color:${REL_C.text}">
+    <tr><td style="background-color:${REL_C.teal};background-image:linear-gradient(135deg,#3cb878 0%,#2ab5b5 100%);padding:24px 26px;border-radius:14px 14px 0 0">
       <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
-        ${relTile('Vendas Mercado Livre', nn(s.vendasML), 'total 2 contas', REL_C.green)}
-        ${relTile('Vendas Shopee', nn(s.shopee), '&nbsp;')}
-        ${relTile('Adicionados ao estoque', nn(s.adic), 'entradas na semana')}
-        ${relTile('Total em estoque', nn(s.estoque), 'aparelhos')}
+        <td>
+          <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#e9fff7;font-weight:bold">Grupo PLL · Relatório semanal${mes ? ' + resumo do mês' : ''}</div>
+          <div style="font-size:26px;font-weight:bold;color:#ffffff;margin-top:5px">${periodo}</div>
+          <div style="font-size:13px;color:#e9fff7;margin-top:3px">Vendas, devoluções e ocorrências da semana</div>
+        </td>
+        <td align="right" valign="middle" width="120">
+          <div style="display:inline-block;background:rgba(255,255,255,.18);border-radius:12px;padding:10px 14px;text-align:center">
+            <div style="font-size:30px;font-weight:bold;color:#ffffff;line-height:1">${nn(s.vendasTotal)}</div>
+            <div style="font-size:10.5px;color:#e9fff7;text-transform:uppercase;letter-spacing:.06em;margin-top:3px">vendas</div>
+          </div>
+        </td>
       </tr></table>
     </td></tr>
-    <tr><td style="padding:10px 19px 0">
-      <div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:${REL_C.muted};font-weight:bold;padding:0 5px 4px">Pós-venda</div>
+    <tr><td style="padding:18px 26px 4px;font-size:14px;line-height:1.6">
+      Olá pessoal, ${saud}. Tudo bem? Segue o resumo da semana.
+    </td></tr>
+    ${s.obs ? `<tr><td style="padding:6px 26px 0"><div style="font-size:13px;line-height:1.55;background:${REL_C.bg};border-left:3px solid ${REL_C.teal};border-radius:6px;padding:10px 12px">${relEscBr(s.obs)}</div></td></tr>` : ''}
+
+    <tr><td style="padding:12px 21px 0">
       <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
-        ${relTile('Devoluções', nn(s.devolTotal), 'abertas na semana', REL_C.red)}
-        ${relTile('Desistências', nn(s.desist), '&nbsp;', REL_C.amber)}
-        ${relTile('Ocorrências', nn(s.ocorrTotal), 'trocas / erros', REL_C.blue)}
-        <td width="25%" style="padding:5px">&nbsp;</td>
+        ${relTile('Total de vendas', nn(s.vendasTotal), subVendas, REL_C.green, REL_C.greenBar)}
+        ${relTile('Mercado Livre', nn(s.vendasML), '2 contas', null, REL_C.teal)}
+        ${relTile('Shopee', nn(s.shopee), '&nbsp;', null, '#f97316')}
+        ${relTile('Outros produtos', nn(s.outras), '&nbsp;', null, '#64748b')}
+      </tr><tr>
+        ${relTile('Devoluções', nn(s.devolTotal), valorDev ? relMoney(valorDev) + ' em vendas' : 'abertas na semana', REL_C.red, REL_C.redBar)}
+        ${relTile('Desistências', nn(s.desist), '&nbsp;', REL_C.amber, REL_C.amberBar)}
+        ${relTile('Ocorrências', nn(s.ocorrTotal), 'trocas / erros', REL_C.blue, REL_C.blueBar)}
+        ${relTile('Total em estoque', nn(s.estoque), s.adic != null ? `+${relN(s.adic)} adicionados` : 'aparelhos', null, REL_C.purple)}
+      </tr></table>
+    </td></tr>
+
+    <tr><td style="padding:12px 21px 0">
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
+        <td width="50%" valign="top" style="padding:5px">${relPanel('Vendas Mercado Livre por dia', relDayChart(s.vendasPorDia))}</td>
+        <td width="50%" valign="top" style="padding:5px">${relPanel('Devoluções · motivo', relHBars(motivos, s.devolucoes.length))}
+          <div style="height:10px;font-size:0;line-height:0">&nbsp;</div>
+          ${relPanel('Devoluções · situação', relHBars(situacao, s.devolucoes.length))}</td>
       </tr></table>
     </td></tr>`;
 
-  html += relSectionTitle('Devoluções', s.devolucoes.length, '#ef4444');
-  html += `<tr><td style="padding:0 24px">${s.devolucoes.length
-    ? s.devolucoes.map(o => relItemCard(o, true)).join('')
-    : `<div style="font-size:13px;color:${REL_C.soft}">Nenhuma devolução nesta semana.</div>`}</td></tr>`;
+  html += relSectionTitle('Devoluções', s.devolucoes.length, REL_C.redBar, valorDev ? `Total em vendas: <b style="color:${REL_C.red}">${relMoney(valorDev)}</b>` : '');
+  html += `<tr><td style="padding:0 26px">${s.devolucoes.length
+    ? s.devolucoes.map((o, i) => relItemCard(o, true, i + 1)).join('')
+    : `<div style="font-size:13px;color:${REL_C.soft};background:${REL_C.bg};border-radius:8px;padding:12px">✓ Nenhuma devolução nesta semana.</div>`}</td></tr>`;
 
-  html += relSectionTitle('Ocorrências', s.ocorrencias.length, '#3b82f6');
-  html += `<tr><td style="padding:0 24px">${s.ocorrencias.length
-    ? s.ocorrencias.map(o => relItemCard(o, false)).join('')
-    : `<div style="font-size:13px;color:${REL_C.soft}">Nenhuma ocorrência nesta semana.</div>`}</td></tr>`;
+  html += relSectionTitle('Ocorrências', s.ocorrencias.length, REL_C.blueBar);
+  html += `<tr><td style="padding:0 26px">${s.ocorrencias.length
+    ? s.ocorrencias.map((o, i) => relItemCard(o, false, i + 1)).join('')
+    : `<div style="font-size:13px;color:${REL_C.soft};background:${REL_C.bg};border-radius:8px;padding:12px">✓ Nenhuma ocorrência nesta semana.</div>`}</td></tr>`;
 
   if (mes) {
     const base = mes.vendasTotal;
+    const problemas = [mes.devol, mes.desist, mes.ocorr].every(v => v != null) ? mes.devol + mes.desist + mes.ocorr : null;
     const destaque = base && mes.devol != null
       ? `Em ${mes.nome} vendemos <b>${relN(base)}</b> produtos e tivemos <b style="color:${REL_C.red}">${relN(mes.devol)}</b> devoluções — <b style="color:${REL_C.red}">${relPct(mes.devol, base)}</b> das vendas.`
       : '';
-    const problemas = [mes.devol, mes.desist, mes.ocorr].every(v => v != null) ? mes.devol + mes.desist + mes.ocorr : null;
-    html += `<tr><td style="padding:24px 24px 4px">
-      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border:1px solid ${REL_C.line};border-radius:10px;background:#fbfcfd">
-        <tr><td style="padding:16px 16px 6px">
-          <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:${REL_C.teal};font-weight:bold">Resumo do mês</div>
-          <div style="font-size:19px;font-weight:bold;color:${REL_C.text};margin-top:2px">${mes.nome} ${mes.ano}</div>
-          ${destaque ? `<div style="font-size:13.5px;line-height:1.55;margin-top:8px">${destaque}</div>` : ''}
+    const linha = (label, val, bold) => `<tr>
+      <td style="padding:7px 0;border-bottom:1px solid ${REL_C.line};font-size:13px;color:${REL_C.text};${bold ? 'font-weight:bold' : ''}">${label}</td>
+      <td align="right" style="padding:7px 0;border-bottom:1px solid ${REL_C.line};font-size:14px;font-weight:bold;color:${bold ? REL_C.green : REL_C.text}">${val == null ? '<span style="color:#b0bac4;font-weight:normal">não informado</span>' : relN(val)}</td>
+    </tr>`;
+
+    html += `<tr><td style="padding:26px 26px 4px">
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border:1px solid ${REL_C.line};border-radius:12px;background:#fbfcfd">
+        <tr><td style="padding:16px 18px 6px">
+          <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:${REL_C.teal};font-weight:bold">Resumo do mês</div>
+          <div style="font-size:21px;font-weight:bold;color:${REL_C.text};margin-top:2px">${mes.nome} ${mes.ano}</div>
+          ${destaque ? `<div style="font-size:13.5px;line-height:1.55;margin-top:6px">${destaque}</div>` : ''}
         </td></tr>
-        <tr><td style="padding:6px 6px 10px">
-          <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
-            <tr>
-              <td style="padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:${REL_C.soft};font-weight:bold;border-bottom:1px solid ${REL_C.line}">Indicador</td>
-              <td align="right" style="padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:${REL_C.soft};font-weight:bold;border-bottom:1px solid ${REL_C.line}">Qtd</td>
-              <td align="right" style="padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:${REL_C.soft};font-weight:bold;border-bottom:1px solid ${REL_C.line}">% das vendas</td>
-              <td style="border-bottom:1px solid ${REL_C.line}"></td>
-            </tr>
-            ${relMesRow('Vendas Mercado Livre <span style="color:' + REL_C.soft + ';font-weight:normal">(2 contas)</span>', mes.vendasML, null, null)}
-            ${relMesRow('Vendas Shopee', mes.shopee, null, null)}
-            ${relMesRow('Total de vendas', base, null, REL_C.green, true)}
-            ${relMesRow('Devoluções', mes.devol, base, '#dc2626')}
-            ${relMesRow('Desistências', mes.desist, base, '#d97706')}
-            ${relMesRow('Ocorrências', mes.ocorr, base, '#2563eb')}
-            ${problemas != null ? relMesRow('Total de problemas pós-venda', problemas, base, '#7c3aed', true) : ''}
-            ${relMesRow('Adicionados ao estoque', mes.adic, null, null)}
-          </table>
-          ${mes.valorDevolvido ? `<div style="font-size:11.5px;color:${REL_C.soft};padding:8px 10px 0">Valor de venda dos aparelhos devolvidos no mês: <b style="color:${REL_C.red}">${relMoney(mes.valorDevolvido)}</b></div>` : ''}
+        <tr><td style="padding:6px 13px 4px">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
+            ${relRateTile('Taxa de devolução', mes.devol, base, REL_C.red, REL_C.redBg)}
+            ${relRateTile('Taxa de desistência', mes.desist, base, REL_C.amber, REL_C.amberBg)}
+            ${relRateTile('Taxa de ocorrências', mes.ocorr, base, REL_C.blue, REL_C.blueBg)}
+          </tr></table>
+        </td></tr>
+        <tr><td style="padding:8px 18px 14px">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
+            <td width="48%" valign="top">
+              <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+                ${linha('Vendas Mercado Livre (2 contas)', mes.vendasML)}
+                ${linha('Vendas Shopee', mes.shopee)}
+                ${linha('Vendas outros produtos', mes.outras)}
+                ${linha('Total de vendas', base, true)}
+              </table>
+            </td>
+            <td width="4%">&nbsp;</td>
+            <td width="48%" valign="top">
+              <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+                ${linha('Devoluções', mes.devol)}
+                ${linha('Desistências', mes.desist)}
+                ${linha('Ocorrências', mes.ocorr)}
+                ${linha('Adicionados ao estoque', mes.adic)}
+              </table>
+            </td>
+          </tr></table>
+          ${problemas != null && base ? `<div style="font-size:12.5px;color:${REL_C.text};background:#f3eefe;border-radius:8px;padding:9px 12px;margin-top:12px">Total de problemas pós-venda: <b style="color:${REL_C.purple}">${relN(problemas)}</b> (${relPct(problemas, base)} das vendas)${mes.valorDevolvido ? ` · Valor dos aparelhos devolvidos: <b style="color:${REL_C.red}">${relMoney(mes.valorDevolvido)}</b>` : ''}</div>` : ''}
         </td></tr>
       </table>
     </td></tr>`;
   }
 
-  html += `<tr><td style="padding:18px 24px 22px;font-size:11px;color:${REL_C.soft};border-top:1px solid ${REL_C.line}">
-      Relatório gerado a partir da planilha de controle em ${new Date().toLocaleDateString('pt-BR')}. Qualquer dúvida, é só chamar.
+  html += `<tr><td style="padding:18px 26px 22px;font-size:11px;color:${REL_C.soft}">
+      Gerado a partir da planilha de controle em ${new Date().toLocaleDateString('pt-BR')}. Qualquer dúvida, é só chamar.
     </td></tr>
   </table></div>`;
   return html;
@@ -612,6 +719,8 @@ function relBuildText(d) {
   L.push('');
   L.push(`• Vendas Mercado Livre: ${v(s.vendasML)} (total 2 contas)`);
   L.push(`• Vendas Shopee: ${v(s.shopee)}`);
+  if (s.outras) L.push(`• Vendas outros produtos: ${v(s.outras)}`);
+  L.push(`• Total de vendas: ${v(s.vendasTotal)}`);
   L.push(`• Devoluções: ${v(s.devolTotal)}`);
   L.push(`• Desistências: ${v(s.desist)}`);
   L.push(`• Adicionados ao estoque: ${v(s.adic)}`);
@@ -644,6 +753,7 @@ function relBuildText(d) {
     L.push(''); L.push(`RESUMO DO MÊS DE ${mes.nome.toUpperCase()} ${mes.ano}`); L.push('');
     L.push(`• Vendas Mercado Livre: ${v(mes.vendasML)} (total 2 contas)`);
     L.push(`• Vendas Shopee: ${v(mes.shopee)}`);
+    L.push(`• Vendas outros produtos: ${v(mes.outras)}`);
     L.push(`• Total de vendas: ${v(base)}`);
     L.push(`• Devoluções: ${v(mes.devol)}${p(mes.devol)}`);
     L.push(`• Desistências: ${v(mes.desist)}${p(mes.desist)}`);
@@ -696,4 +806,69 @@ async function relCopyText() {
     const ok = document.execCommand('copy'); ta.remove();
     relToast(ok ? 'Texto copiado!' : 'Não consegui copiar o texto.');
   }
+}
+
+// ── imagem (PNG) ─────────────────────────────────────────────────────────────
+// Renderiza o relatório numa área fora da tela, com largura fixa, e converte
+// em PNG com html2canvas (carregado só quando for usado).
+let relH2CPromise = null;
+function relLoadHtml2Canvas() {
+  if (window.html2canvas) return Promise.resolve(window.html2canvas);
+  if (!relH2CPromise) {
+    relH2CPromise = new Promise((resolve, reject) => {
+      const sc = document.createElement('script');
+      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      sc.onload = () => resolve(window.html2canvas);
+      sc.onerror = () => { relH2CPromise = null; reject(new Error('Falha ao carregar html2canvas')); };
+      document.head.appendChild(sc);
+    });
+  }
+  return relH2CPromise;
+}
+
+async function relRenderPng() {
+  const h2c = await relLoadHtml2Canvas();
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;left:-10000px;top:0;width:760px;background:#f4f7f9;';
+  host.innerHTML = relBuildEmailHtml(relCollect());
+  document.body.appendChild(host);
+  try {
+    const canvas = await h2c(host, { scale: 2, backgroundColor: '#f4f7f9', useCORS: true, logging: false });
+    return await new Promise(res => canvas.toBlob(res, 'image/png'));
+  } finally {
+    host.remove();
+  }
+}
+
+function relImgName() {
+  const r = relState.range;
+  return `relatorio-semanal_${r.iniISO}_a_${r.fimISO}.png`;
+}
+
+async function relWithBusy(btnId, fn) {
+  const btn = document.getElementById(btnId);
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Gerando…';
+  try { await fn(); } catch (e) { console.warn(e); relToast('Não consegui gerar a imagem: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = old; }
+}
+
+function relDownloadImage() {
+  return relWithBusy('relBaixarImg', async () => {
+    const blob = await relRenderPng();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = relImgName();
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    relToast('Imagem baixada! Pode anexar no e-mail ou enviar no WhatsApp.');
+  });
+}
+
+function relCopyImage() {
+  return relWithBusy('relCopiarImg', async () => {
+    const blob = await relRenderPng();
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    relToast('Imagem copiada! Cole (Ctrl+V) no WhatsApp ou no e-mail.');
+  });
 }
