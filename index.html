@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dashboard Vendas · Mercado Livre</title>
-  <link rel="stylesheet" href="style.css?v=20261106c" />
+  <link rel="stylesheet" href="style.css?v=20261109a" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" defer></script>
 </head>
 <body>
@@ -781,8 +781,11 @@
                 <div class="rel-card-title"><span class="rel-num rel-num-ok">✓</span>Já vem da planilha</div>
                 <div class="rel-autolist" id="relAutoList"></div>
                 <details class="rel-mini-details">
-                  <summary>Corrigir vendas do Mercado Livre</summary>
-                  <label class="rel-field">Vendas Mercado Livre (semana)<input type="number" min="0" inputmode="numeric" id="relW_vendasML" data-rel-w="vendasML"><span class="rel-auto" id="relW_vendasML_auto"></span></label>
+                  <summary>Corrigir vendas</summary>
+                  <div class="rel-grid">
+                    <label class="rel-field">Mercado Livre (aba do mês)<input type="number" min="0" inputmode="numeric" id="relW_vendasML" data-rel-w="vendasML"><span class="rel-auto" id="relW_vendasML_auto"></span></label>
+                    <label class="rel-field">Produtos caros<input type="number" min="0" inputmode="numeric" id="relW_caros" data-rel-w="caros"></label>
+                  </div>
                 </details>
               </div>
 
@@ -790,11 +793,10 @@
                 <div class="rel-card-title"><span class="rel-num">✎</span>Preencha você</div>
                 <div class="rel-sub">Só o que não existe na planilha. Fica salvo automaticamente.</div>
                 <div class="rel-grid">
-                  <label class="rel-field">Desistências<input type="number" min="0" inputmode="numeric" id="relW_desist" data-rel-w="desist"></label>
+                  <label class="rel-field">Desistências <span class="rel-opt">(vendas canceladas)</span><input type="number" min="0" inputmode="numeric" id="relW_desist" data-rel-w="desist"></label>
                   <label class="rel-field">Adicionados ao estoque<input type="number" min="0" inputmode="numeric" id="relW_adic" data-rel-w="adic"></label>
                   <label class="rel-field">Total em estoque<input type="number" min="0" inputmode="numeric" id="relW_estoque" data-rel-w="estoque"></label>
                   <label class="rel-field">Vendas Shopee<input type="number" min="0" inputmode="numeric" id="relW_shopee" data-rel-w="shopee" placeholder="0"></label>
-                  <label class="rel-field rel-span2">Vendas de outros produtos<input type="number" min="0" inputmode="numeric" id="relW_outras" data-rel-w="outras" placeholder="0"></label>
                 </div>
                 <label class="rel-field rel-field-full">Recado para a equipe <span class="rel-opt">(opcional)</span><textarea id="relW_obs" data-rel-w="obs" rows="2" placeholder="Ex: semana com muitas devoluções de iPhone 11 por Face ID."></textarea></label>
               </div>
@@ -812,7 +814,7 @@
                     <div class="rel-grid">
                       <label class="rel-field">Vendas Mercado Livre<input type="number" min="0" id="relM_vendasML" data-rel-m="vendasML"><span class="rel-auto" id="relM_vendasML_auto"></span></label>
                       <label class="rel-field">Vendas Shopee<input type="number" min="0" id="relM_shopee" data-rel-m="shopee"><span class="rel-auto" id="relM_shopee_auto"></span></label>
-                      <label class="rel-field">Vendas outros produtos<input type="number" min="0" id="relM_outras" data-rel-m="outras"><span class="rel-auto" id="relM_outras_auto"></span></label>
+                      <label class="rel-field">Vendas produtos caros<input type="number" min="0" id="relM_caros" data-rel-m="caros"><span class="rel-auto" id="relM_caros_auto"></span></label>
                       <label class="rel-field">Devoluções<input type="number" min="0" id="relM_devol" data-rel-m="devol"><span class="rel-auto" id="relM_devol_auto"></span></label>
                       <label class="rel-field">Desistências<input type="number" min="0" id="relM_desist" data-rel-m="desist"><span class="rel-auto" id="relM_desist_auto"></span></label>
                       <label class="rel-field">Ocorrências<input type="number" min="0" id="relM_ocorr" data-rel-m="ocorr"><span class="rel-auto" id="relM_ocorr_auto"></span></label>
@@ -871,7 +873,7 @@
     });
   })();
 </script>
-<script src="app.js?v=20261106c"></script>
-<script src="relatorio.js?v=20261106c"></script>
+<script src="app.js?v=20261109a"></script>
+<script src="relatorio.js?v=20261109a"></script>
 </body>
 </html>

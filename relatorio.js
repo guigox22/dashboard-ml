@@ -113,6 +113,44 @@ function relLoadMonth(ano, mesIdx, force) {
   return p;
 }
 
+// ── vendas: aba "Produtos caros" ─────────────────────────────────────────────
+// Coluna A = dia que o aparelho saiu ("6 nov 09:01 hs"), sem ano. O ano é
+// deduzido pela data mais próxima do período consultado.
+const REL_ABA_CAROS = 'Produtos caros';
+let relCarosCache = null;
+function relLoadCaros(force) {
+  if (relCarosCache && !force) return relCarosCache;
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(REL_ABA_CAROS)}&cachebust=${Date.now()}`;
+  relCarosCache = fetch(url, { cache: 'no-store' })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+    .then(text => {
+      const rows = [];
+      relParseCSV(text).forEach(r => {
+        const venda = (r[1] || '').trim();
+        if (!venda.startsWith('#')) return;
+        const m = (r[0] || '').trim().toLowerCase().match(/^(\d{1,2})\s+([a-zç]{3})/);
+        if (!m || REL_MES_ABBR[m[2]] == null) return;
+        const qtd = parseInt(r[5], 10);
+        rows.push({ dia: +m[1], mesIdx: REL_MES_ABBR[m[2]], venda, qtd: isNaN(qtd) || qtd <= 0 ? 1 : qtd });
+      });
+      // A aba não existe → o Google devolve a 1ª aba; confere o cabeçalho
+      const ok = rows.length > 0 && /VENDA/i.test(text.slice(0, 400));
+      return { ok, rows: ok ? rows : [] };
+    })
+    .catch(err => { console.warn('Aba "Produtos caros" não carregada:', err.message); relCarosCache = null; return { ok: false, rows: [] }; });
+  return relCarosCache;
+}
+
+// Data completa de uma linha, escolhendo o ano mais próximo da referência.
+function relCarosDate(row, ref) {
+  let best = null;
+  [-1, 0, 1].forEach(dy => {
+    const d = new Date(ref.getFullYear() + dy, row.mesIdx, row.dia);
+    if (!best || Math.abs(d - ref) < Math.abs(best - ref)) best = d;
+  });
+  return best;
+}
+
 function relMonthsBetween(ini, fim) {
   const out = [];
   const d = new Date(ini.getFullYear(), ini.getMonth(), 1);
@@ -162,6 +200,7 @@ function renderRelatorio(opts = {}) {
   }
   if (opts.reload) {
     Object.keys(relMonthCache).forEach(k => delete relMonthCache[k]);
+    relCarosCache = null;
     relRecompute();
   }
 }
@@ -194,6 +233,7 @@ function relRenderAutoList() {
   const linha = (cor, label, val, sub) => `<div class="rel-auto-row"><span class="rel-auto-dot" style="background:${cor}"></span><span class="rel-auto-label">${label}${sub ? `<small>${sub}</small>` : ''}</span><b>${val}</b></div>`;
   el.innerHTML =
     linha('#2ab5b5', 'Vendas Mercado Livre', mlCorr != null ? relN(mlCorr) : ml, mlCorr != null ? 'corrigido por você' : 'aba do mês, 2 contas') +
+    linha('#64748b', 'Vendas produtos caros', relNumOrNull(w.caros) != null ? relN(relNumOrNull(w.caros)) : (relState.carosSemana != null ? relN(relState.carosSemana) : (relState.carosOk === false ? '<span class="rel-auto-warn">aba não encontrada</span>' : loading)), relNumOrNull(w.caros) != null ? 'corrigido por você' : 'aba Produtos caros') +
     linha('#ef4444', 'Devoluções', relDataLoaded ? relN(relState.devolucoes.length) : loading, 'aba Ocorrências') +
     linha('#3b82f6', 'Ocorrências', relDataLoaded ? relN(relState.ocorrList.length) : loading, 'aba Ocorrências');
 }
@@ -368,19 +408,32 @@ async function relRecompute() {
   const meses = relMonthsBetween(r.ini, r.fim);
   const mk = document.getElementById('relMes').value;
   const [ano, mm] = mk.split('-').map(Number);
-  const [resSemana, resMes] = await Promise.all([
+  const [resSemana, resMes, resCaros] = await Promise.all([
     Promise.all(meses.map(m => relLoadMonth(m.ano, m.mesIdx))),
     relLoadMonth(ano, mm - 1),
+    relLoadCaros(),
   ]);
   if (token !== relToken) return;
 
   const okSemana = resSemana.every(x => x.ok);
   const rowsSemana = resSemana.flatMap(x => x.rows).filter(v => v.date >= r.ini && v.date <= r.fimEnd);
   const vendasSemana = rowsSemana.reduce((a, v) => a + v.qtd, 0);
+
+  // Produtos caros: na semana e no mês do resumo
+  const carosSemanaRows = resCaros.rows.map(v => Object.assign({}, v, { date: relCarosDate(v, r.fim) }))
+    .filter(v => v.date >= r.ini && v.date <= r.fimEnd);
+  const refMes = new Date(ano, mm - 1, 15);
+  relState.carosOk = resCaros.ok;
+  relState.carosSemana = resCaros.ok ? carosSemanaRows.reduce((a, v) => a + v.qtd, 0) : null;
+  relState.mesCaros = resCaros.ok
+    ? resCaros.rows.filter(v => { const d = relCarosDate(v, refMes); return d.getFullYear() === ano && d.getMonth() === mm - 1; }).reduce((a, v) => a + v.qtd, 0)
+    : null;
+
+  const todasSemana = rowsSemana.concat(carosSemanaRows);
   const dias = [];
   for (let d = new Date(r.ini); d <= r.fim; d.setDate(d.getDate() + 1)) {
     const iso = relISO(d);
-    dias.push({ date: new Date(d), qtd: rowsSemana.filter(v => relISO(v.date) === iso).reduce((a, v) => a + v.qtd, 0) });
+    dias.push({ date: new Date(d), qtd: todasSemana.filter(v => relISO(v.date) === iso).reduce((a, v) => a + v.qtd, 0) });
   }
   relState.vendasPorDia = okSemana ? dias : null;
   relState.vendasSemana = okSemana ? vendasSemana : null;
@@ -409,7 +462,7 @@ function relMonthAuto() {
     mk, ano, mesIdx: mm - 1,
     vendasML: relState && relState.mesVendas != null ? relState.mesVendas : null,
     shopee: relSumWeeks(mk, 'shopee'),
-    outras: relSumWeeks(mk, 'outras'),
+    caros: relState && relState.mesCaros != null ? relState.mesCaros : null,
     devol: devMes.length,
     ocorr: doMes.length - devMes.length,
     desist: relSumWeeks(mk, 'desist'),
@@ -429,7 +482,9 @@ function relUpdateMonthAutos() {
   setAuto('relM_vendasML', a.vendasML,
     relState && relState.mesAbaOk === false ? `aba “${relState.mesAbaNome}” não encontrada` : `aba ${relState ? relState.mesAbaNome || '' : ''}`);
   setAuto('relM_shopee', a.shopee.total, `soma de ${a.shopee.semanas} semana(s)`);
-  setAuto('relM_outras', a.outras.total, `soma de ${a.outras.semanas} semana(s)`);
+  setAuto('relM_caros', a.caros, relState && relState.carosOk === false ? 'aba “Produtos caros” não encontrada' : 'aba Produtos caros');
+  const wc = document.getElementById('relW_caros');
+  if (wc) wc.placeholder = relState && relState.carosSemana != null ? String(relState.carosSemana) : '…';
   setAuto('relM_devol', a.devol, 'aba Ocorrências');
   setAuto('relM_ocorr', a.ocorr, 'aba Ocorrências');
   setAuto('relM_desist', a.desist.total, `soma de ${a.desist.semanas} semana(s)`);
@@ -459,7 +514,7 @@ function relCollect() {
   const semana = {
     vendasML: pick(w.vendasML, relState.vendasSemana),
     shopee: pick(w.shopee, 0),
-    outras: pick(w.outras, 0),
+    outras: pick(w.caros, relState.carosSemana),
     vendasPorDia: relState.vendasPorDia,
     desist: relNumOrNull(w.desist),
     adic: relNumOrNull(w.adic),
@@ -480,7 +535,7 @@ function relCollect() {
       nome: MESES_PT[a.mesIdx], ano: a.ano,
       vendasML: pick(m.vendasML, a.vendasML),
       shopee: pick(m.shopee, a.shopee.total),
-      outras: pick(m.outras, a.outras.total),
+      outras: pick(m.caros, a.caros),
       devol: pick(m.devol, a.devol),
       desist: pick(m.desist, a.desist.semanas ? a.desist.total : null),
       ocorr: pick(m.ocorr, a.ocorr),
@@ -670,7 +725,7 @@ function relBuildEmailHtml(d) {
   const saud = (() => { const h = new Date().getHours(); return h < 12 ? 'bom dia' : h < 18 ? 'boa tarde' : 'boa noite'; })();
   const nn = v => (v == null ? '<span style="color:#b0bac4">—</span>' : relN(v));
   const valorDev = s.devolucoes.reduce((a, o) => a + (o.precoVenda || 0), 0);
-  const subVendas = [`ML ${relN(s.vendasML)}`, s.shopee ? `Shopee ${relN(s.shopee)}` : '', s.outras ? `Outros ${relN(s.outras)}` : ''].filter(Boolean).join(' · ');
+  const subVendas = [`ML ${relN(s.vendasML)}`, s.shopee ? `Shopee ${relN(s.shopee)}` : '', s.outras ? `Caros ${relN(s.outras)}` : ''].filter(Boolean).join(' · ');
 
   const motivos = relAgrupar(s.devolucoes, o => relSubtipo(o.tipo));
   const situacao = relAgrupar(s.devolucoes, o => {
@@ -705,7 +760,7 @@ function relBuildEmailHtml(d) {
         ${relTile('Total de vendas', nn(s.vendasTotal), subVendas, REL_C.green, REL_C.greenBar)}
         ${relTile('Mercado Livre', nn(s.vendasML), '2 contas', null, REL_C.teal)}
         ${relTile('Shopee', nn(s.shopee), '&nbsp;', null, '#f97316')}
-        ${relTile('Outros produtos', nn(s.outras), '&nbsp;', null, '#64748b')}
+        ${relTile('Produtos caros', nn(s.outras), 'aba Produtos caros', null, '#64748b')}
       </tr><tr>
         ${relTile('Devoluções', nn(s.devolTotal), valorDev ? relMoney(valorDev) + ' em vendas' : 'abertas na semana', REL_C.red, REL_C.redBar)}
         ${relTile('Desistências', nn(s.desist), '&nbsp;', REL_C.amber, REL_C.amberBar)}
@@ -716,7 +771,7 @@ function relBuildEmailHtml(d) {
 
     <tr><td style="padding:12px 21px 0">
       <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
-        <td width="50%" valign="top" style="padding:5px">${relPanel('Vendas Mercado Livre por dia', relDayChart(s.vendasPorDia))}</td>
+        <td width="50%" valign="top" style="padding:5px">${relPanel('Vendas por dia', relDayChart(s.vendasPorDia))}</td>
         <td width="50%" valign="top" style="padding:5px">${relPanel('Devoluções · motivo', relHBars(motivos, s.devolucoes.length))}
           <div style="height:10px;font-size:0;line-height:0">&nbsp;</div>
           ${relPanel('Devoluções · situação', relHBars(situacao, s.devolucoes.length))}</td>
@@ -764,7 +819,7 @@ function relBuildEmailHtml(d) {
               <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
                 ${linha('Vendas Mercado Livre (2 contas)', mes.vendasML)}
                 ${linha('Vendas Shopee', mes.shopee)}
-                ${linha('Vendas outros produtos', mes.outras)}
+                ${linha('Vendas produtos caros', mes.outras)}
                 ${linha('Total de vendas', base, true)}
               </table>
             </td>
@@ -802,7 +857,7 @@ function relBuildText(d) {
   L.push('');
   L.push(`• Vendas Mercado Livre: ${v(s.vendasML)} (total 2 contas)`);
   L.push(`• Vendas Shopee: ${v(s.shopee)}`);
-  if (s.outras) L.push(`• Vendas outros produtos: ${v(s.outras)}`);
+  L.push(`• Vendas produtos caros: ${v(s.outras)}`);
   L.push(`• Total de vendas: ${v(s.vendasTotal)}`);
   L.push(`• Devoluções: ${v(s.devolTotal)}`);
   L.push(`• Desistências: ${v(s.desist)}`);
@@ -836,7 +891,7 @@ function relBuildText(d) {
     L.push(''); L.push(`RESUMO DO MÊS DE ${mes.nome.toUpperCase()} ${mes.ano}`); L.push('');
     L.push(`• Vendas Mercado Livre: ${v(mes.vendasML)} (total 2 contas)`);
     L.push(`• Vendas Shopee: ${v(mes.shopee)}`);
-    L.push(`• Vendas outros produtos: ${v(mes.outras)}`);
+    L.push(`• Vendas produtos caros: ${v(mes.outras)}`);
     L.push(`• Total de vendas: ${v(base)}`);
     L.push(`• Devoluções: ${v(mes.devol)}${p(mes.devol)}`);
     L.push(`• Desistências: ${v(mes.desist)}${p(mes.desist)}`);
