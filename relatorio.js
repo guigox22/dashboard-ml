@@ -60,6 +60,30 @@ function relSubtipo(tipo) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+// Motivo da devolução, pela coluna B (tipo) — e, se ela não disser, pelo texto
+// do defeito. 'arrep' = arrependimento/desistência do cliente; 'defeito' =
+// problema no aparelho (defeito, qualidade, manutenção); 'outro' = o resto
+// (bounce/não entregue, erro de operação, etc.).
+function relDevMotivo(o) {
+  const t = stripAccents(o.tipo || '').toUpperCase();
+  if (t.includes('ARREPEND')) return 'arrep';
+  if (t.includes('DEFEITO') || t.includes('QUALIDADE') || t.includes('MANUTEN')) return 'defeito';
+  if (t.includes('BOUNCE') || t.includes('ERRO') || t.includes('OPERA') || t.includes('CANCEL')) return 'outro';
+  const d = stripAccents(o.defeito || '').toUpperCase();
+  if (d.includes('ARREPEND')) return 'arrep';
+  return 'outro';
+}
+const REL_MOTIVOS = {
+  defeito: { label: 'Devoluções por defeito', curto: 'Defeito', cor: '#ef4444', fg: '#b91c1c', bg: '#fdecec' },
+  arrep:   { label: 'Devoluções por arrependimento', curto: 'Arrependimento', cor: '#f97316', fg: '#c2410c', bg: '#ffedd5' },
+  outro:   { label: 'Outras devoluções', curto: 'Outros motivos', cor: '#94a3b8', fg: '#475569', bg: '#f1f5f9' },
+};
+function relSplitDev(lista) {
+  const out = { defeito: [], arrep: [], outro: [] };
+  lista.forEach(o => out[relDevMotivo(o)].push(o));
+  return out;
+}
+
 function relWeekKey(ini, fim) { return 'relW:' + ini + '_' + fim; }
 function relItemKey(o) { return 'relI:' + (o.venda || o.os || o.produto) + '|' + relISO(o.data) + '|' + (o.tipo || ''); }
 
@@ -234,7 +258,12 @@ function relRenderAutoList() {
   el.innerHTML =
     linha('#2ab5b5', 'Vendas Mercado Livre', mlCorr != null ? relN(mlCorr) : ml, mlCorr != null ? 'corrigido por você' : 'aba do mês, 2 contas') +
     linha('#64748b', 'Vendas produtos caros', relNumOrNull(w.caros) != null ? relN(relNumOrNull(w.caros)) : (relState.carosSemana != null ? relN(relState.carosSemana) : (relState.carosOk === false ? '<span class="rel-auto-warn">aba não encontrada</span>' : loading)), relNumOrNull(w.caros) != null ? 'corrigido por você' : 'aba Produtos caros') +
-    linha('#ef4444', 'Devoluções', relDataLoaded ? relN(relState.devolucoes.length) : loading, 'aba Ocorrências') +
+    (() => {
+      const sp = relSplitDev(relState.devolucoes);
+      return linha(REL_MOTIVOS.defeito.cor, 'Devoluções por defeito', relDataLoaded ? relN(sp.defeito.length) : loading, 'aba Ocorrências') +
+        linha(REL_MOTIVOS.arrep.cor, 'Devoluções por arrependimento', relDataLoaded ? relN(sp.arrep.length) : loading, 'aba Ocorrências') +
+        (sp.outro.length ? linha(REL_MOTIVOS.outro.cor, 'Outras devoluções', relN(sp.outro.length), 'bounce, erro etc.') : '');
+    })() +
     linha('#3b82f6', 'Ocorrências', relDataLoaded ? relN(relState.ocorrList.length) : loading, 'aba Ocorrências');
 }
 
@@ -464,6 +493,9 @@ function relMonthAuto() {
     shopee: relSumWeeks(mk, 'shopee'),
     caros: relState && relState.mesCaros != null ? relState.mesCaros : null,
     devol: devMes.length,
+    devDef: devMes.filter(o => relDevMotivo(o) === 'defeito').length,
+    devArr: devMes.filter(o => relDevMotivo(o) === 'arrep').length,
+    devOutro: devMes.filter(o => relDevMotivo(o) === 'outro').length,
     ocorr: doMes.length - devMes.length,
     desist: relSumWeeks(mk, 'desist'),
     adic: relSumWeeks(mk, 'adic'),
@@ -485,7 +517,8 @@ function relUpdateMonthAutos() {
   setAuto('relM_caros', a.caros, relState && relState.carosOk === false ? 'aba “Produtos caros” não encontrada' : 'aba Produtos caros');
   const wc = document.getElementById('relW_caros');
   if (wc) wc.placeholder = relState && relState.carosSemana != null ? String(relState.carosSemana) : '…';
-  setAuto('relM_devol', a.devol, 'aba Ocorrências');
+  setAuto('relM_devDef', a.devDef, 'aba Ocorrências');
+  setAuto('relM_devArr', a.devArr, 'aba Ocorrências' + (a.devOutro ? ` · +${a.devOutro} outros motivos` : ''));
   setAuto('relM_ocorr', a.ocorr, 'aba Ocorrências');
   setAuto('relM_desist', a.desist.total, `soma de ${a.desist.semanas} semana(s)`);
   setAuto('relM_adic', a.adic.total, `soma de ${a.adic.semanas} semana(s)`);
@@ -524,6 +557,8 @@ function relCollect() {
     ocorrencias: relState.ocorrList.filter(itemFilter),
   };
   semana.devolTotal = relState.devolucoes.length;
+  semana.devSplit = relSplitDev(semana.devolucoes);
+  semana.devSplitTotal = relSplitDev(relState.devolucoes);
   semana.ocorrTotal = relState.ocorrList.length;
   semana.vendasTotal = semana.vendasML == null ? null : semana.vendasML + (semana.shopee || 0) + (semana.outras || 0);
 
@@ -536,13 +571,16 @@ function relCollect() {
       vendasML: pick(m.vendasML, a.vendasML),
       shopee: pick(m.shopee, a.shopee.total),
       outras: pick(m.caros, a.caros),
-      devol: pick(m.devol, a.devol),
+      devDef: pick(m.devDef, a.devDef),
+      devArr: pick(m.devArr, a.devArr),
+      devOutro: a.devOutro,
       desist: pick(m.desist, a.desist.semanas ? a.desist.total : null),
       ocorr: pick(m.ocorr, a.ocorr),
       adic: pick(m.adic, a.adic.semanas ? a.adic.total : null),
       valorDevolvido: a.valorDevolvido,
     };
     mes.vendasTotal = (mes.vendasML || 0) + (mes.shopee || 0) + (mes.outras || 0);
+    mes.devol = (mes.devDef || 0) + (mes.devArr || 0) + (mes.devOutro || 0);
   }
   return { r, semana, mes };
 }
@@ -668,7 +706,8 @@ function relAgrupar(lista, fnLabel, cores) {
 
 function relItemCard(o, isDev, n) {
   const s = relStoreGet(relItemKey(o));
-  const fg = isDev ? REL_C.red : REL_C.blue, bg = isDev ? REL_C.redBg : REL_C.blueBg;
+  const mt = isDev ? REL_MOTIVOS[relDevMotivo(o)] : null;
+  const fg = isDev ? mt.fg : REL_C.blue, bg = isDev ? mt.bg : REL_C.blueBg;
   const meta = [`OS <b style="color:${REL_C.text}">${relEsc(o.os || '—')}</b>`, relDMY(o.data)].join(' &nbsp;·&nbsp; ');
 
   let troca = '';
@@ -702,10 +741,10 @@ function relItemCard(o, isDev, n) {
   </table>`;
 }
 
-function relRateTile(label, qtd, base, color, bg) {
+function relRateTile(label, qtd, base, color, bg, width) {
   const pct = qtd != null && base ? relPctNum(qtd, base) : null;
   const w = pct == null ? 0 : Math.max(3, Math.min(100, Math.round(pct)));
-  return `<td width="33%" valign="top" style="padding:5px">
+  return `<td width="${width || '33%'}" valign="top" style="padding:5px;vertical-align:top">
     <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-radius:10px;background:${bg}">
       <tr><td style="padding:13px 14px 12px">
         <div style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:${color};font-weight:bold">${label}</div>
@@ -727,7 +766,9 @@ function relBuildEmailHtml(d) {
   const valorDev = s.devolucoes.reduce((a, o) => a + (o.precoVenda || 0), 0);
   const subVendas = [`ML ${relN(s.vendasML)}`, s.shopee ? `Shopee ${relN(s.shopee)}` : '', s.outras ? `Caros ${relN(s.outras)}` : ''].filter(Boolean).join(' · ');
 
-  const motivos = relAgrupar(s.devolucoes, o => relSubtipo(o.tipo));
+  const motivos = ['defeito', 'arrep', 'outro']
+    .map(k => ({ label: REL_MOTIVOS[k].curto, qtd: s.devSplit[k].length, color: REL_MOTIVOS[k].cor }))
+    .filter(it => it.qtd > 0);
   const situacao = relAgrupar(s.devolucoes, o => {
     const k = statusResolucao(o).key;
     return k === 'reembolsado' ? 'Reembolsado' : k === 'pendente' ? 'Aguardando chegar' : 'Em andamento';
@@ -762,10 +803,15 @@ function relBuildEmailHtml(d) {
         ${relTile('Shopee', nn(s.shopee), '&nbsp;', null, '#f97316')}
         ${relTile('Produtos caros', nn(s.outras), 'aba Produtos caros', null, '#64748b')}
       </tr><tr>
-        ${relTile('Devoluções', nn(s.devolTotal), valorDev ? relMoney(valorDev) + ' em vendas' : 'abertas na semana', REL_C.red, REL_C.redBar)}
-        ${relTile('Desistências', nn(s.desist), '&nbsp;', REL_C.amber, REL_C.amberBar)}
+        ${relTile('Dev. por defeito', nn(s.devSplitTotal.defeito.length), 'problema no aparelho', REL_MOTIVOS.defeito.fg, REL_MOTIVOS.defeito.cor)}
+        ${relTile('Dev. arrependimento', nn(s.devSplitTotal.arrep.length), 'cliente desistiu', REL_MOTIVOS.arrep.fg, REL_MOTIVOS.arrep.cor)}
+        ${relTile('Desistências', nn(s.desist), 'vendas canceladas', REL_C.amber, REL_C.amberBar)}
         ${relTile('Ocorrências', nn(s.ocorrTotal), 'trocas / erros', REL_C.blue, REL_C.blueBar)}
-        ${relTile('Total em estoque', nn(s.estoque), s.adic != null ? `+${relN(s.adic)} adicionados` : 'aparelhos', null, REL_C.purple)}
+      </tr><tr>
+        ${relTile('Total devoluções', nn(s.devolTotal), valorDev ? relMoney(valorDev) + ' em vendas' : '&nbsp;', REL_C.red, '#b91c1c')}
+        ${relTile('Adicionados ao estoque', nn(s.adic), 'na semana', null, '#14b8a6')}
+        ${relTile('Total em estoque', nn(s.estoque), 'aparelhos', null, REL_C.purple)}
+        <td width="25%" style="padding:5px">&nbsp;</td>
       </tr></table>
     </td></tr>
 
@@ -778,10 +824,16 @@ function relBuildEmailHtml(d) {
       </tr></table>
     </td></tr>`;
 
-  html += relSectionTitle('Devoluções', s.devolucoes.length, REL_C.redBar, valorDev ? `Total em vendas: <b style="color:${REL_C.red}">${relMoney(valorDev)}</b>` : '');
-  html += `<tr><td style="padding:0 26px">${s.devolucoes.length
-    ? s.devolucoes.map((o, i) => relItemCard(o, true, i + 1)).join('')
-    : `<div style="font-size:13px;color:${REL_C.soft};background:${REL_C.bg};border-radius:8px;padding:12px">✓ Nenhuma devolução nesta semana.</div>`}</td></tr>`;
+  ['defeito', 'arrep', 'outro'].forEach(k => {
+    const lista = s.devSplit[k];
+    if (k === 'outro' && !lista.length) return;
+    const mt = REL_MOTIVOS[k];
+    const val = lista.reduce((a, o) => a + (o.precoVenda || 0), 0);
+    html += relSectionTitle(mt.label, lista.length, mt.cor, val ? `Total em vendas: <b style="color:${mt.fg}">${relMoney(val)}</b>` : '');
+    html += `<tr><td style="padding:0 26px">${lista.length
+      ? lista.map((o, i) => relItemCard(o, true, i + 1)).join('')
+      : `<div style="font-size:13px;color:${REL_C.soft};background:${REL_C.bg};border-radius:8px;padding:12px">✓ Nenhuma nesta semana.</div>`}</td></tr>`;
+  });
 
   html += relSectionTitle('Ocorrências', s.ocorrencias.length, REL_C.blueBar);
   html += `<tr><td style="padding:0 26px">${s.ocorrencias.length
@@ -792,7 +844,7 @@ function relBuildEmailHtml(d) {
     const base = mes.vendasTotal;
     const problemas = [mes.devol, mes.desist, mes.ocorr].every(v => v != null) ? mes.devol + mes.desist + mes.ocorr : null;
     const destaque = base && mes.devol != null
-      ? `Em ${mes.nome} vendemos <b>${relN(base)}</b> produtos e tivemos <b style="color:${REL_C.red}">${relN(mes.devol)}</b> devoluções — <b style="color:${REL_C.red}">${relPct(mes.devol, base)}</b> das vendas.`
+      ? `Em ${mes.nome} vendemos <b>${relN(base)}</b> produtos e tivemos <b style="color:${REL_C.red}">${relN(mes.devol)}</b> devoluções — <b style="color:${REL_C.red}">${relPct(mes.devol, base)}</b> das vendas: <b style="color:${REL_MOTIVOS.defeito.fg}">${relN(mes.devDef)} por defeito (${relPct(mes.devDef, base)})</b> e <b style="color:${REL_MOTIVOS.arrep.fg}">${relN(mes.devArr)} por arrependimento (${relPct(mes.devArr, base)})</b>${mes.devOutro ? ` e ${relN(mes.devOutro)} por outros motivos` : ''}.`
       : '';
     const linha = (label, val, bold) => `<tr>
       <td style="padding:7px 0;border-bottom:1px solid ${REL_C.line};font-size:13px;color:${REL_C.text};${bold ? 'font-weight:bold' : ''}">${label}</td>
@@ -808,14 +860,15 @@ function relBuildEmailHtml(d) {
         </td></tr>
         <tr><td style="padding:6px 13px 4px">
           <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
-            ${relRateTile('Taxa de devolução', mes.devol, base, REL_C.red, REL_C.redBg)}
-            ${relRateTile('Taxa de desistência', mes.desist, base, REL_C.amber, REL_C.amberBg)}
-            ${relRateTile('Taxa de ocorrências', mes.ocorr, base, REL_C.blue, REL_C.blueBg)}
+            ${relRateTile('Por defeito', mes.devDef, base, REL_MOTIVOS.defeito.fg, REL_MOTIVOS.defeito.bg, '25%')}
+            ${relRateTile('Arrependimento', mes.devArr, base, REL_MOTIVOS.arrep.fg, REL_MOTIVOS.arrep.bg, '25%')}
+            ${relRateTile('Desistências', mes.desist, base, REL_C.amber, REL_C.amberBg, '25%')}
+            ${relRateTile('Ocorrências', mes.ocorr, base, REL_C.blue, REL_C.blueBg, '25%')}
           </tr></table>
         </td></tr>
         <tr><td style="padding:8px 18px 14px">
           <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
-            <td width="48%" valign="top">
+            <td width="48%" valign="top" style="vertical-align:top">
               <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
                 ${linha('Vendas Mercado Livre (2 contas)', mes.vendasML)}
                 ${linha('Vendas Shopee', mes.shopee)}
@@ -824,9 +877,12 @@ function relBuildEmailHtml(d) {
               </table>
             </td>
             <td width="4%">&nbsp;</td>
-            <td width="48%" valign="top">
+            <td width="48%" valign="top" style="vertical-align:top">
               <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
-                ${linha('Devoluções', mes.devol)}
+                ${linha('Devoluções por defeito', mes.devDef)}
+                ${linha('Devoluções por arrependimento', mes.devArr)}
+                ${mes.devOutro ? linha('Outras devoluções', mes.devOutro) : ''}
+                ${linha('Total de devoluções', mes.devol)}
                 ${linha('Desistências', mes.desist)}
                 ${linha('Ocorrências', mes.ocorr)}
                 ${linha('Adicionados ao estoque', mes.adic)}
@@ -859,7 +915,9 @@ function relBuildText(d) {
   L.push(`• Vendas Shopee: ${v(s.shopee)}`);
   L.push(`• Vendas produtos caros: ${v(s.outras)}`);
   L.push(`• Total de vendas: ${v(s.vendasTotal)}`);
-  L.push(`• Devoluções: ${v(s.devolTotal)}`);
+  L.push(`• Devoluções por defeito: ${v(s.devSplitTotal.defeito.length)}`);
+  L.push(`• Devoluções por arrependimento: ${v(s.devSplitTotal.arrep.length)}`);
+  if (s.devSplitTotal.outro.length) L.push(`• Outras devoluções: ${v(s.devSplitTotal.outro.length)}`);
   L.push(`• Desistências: ${v(s.desist)}`);
   L.push(`• Adicionados ao estoque: ${v(s.adic)}`);
   L.push(`• Total estoque: ${v(s.estoque)}`);
@@ -882,7 +940,9 @@ function relBuildText(d) {
       if (obs) L.push(`  Obs: ${obs.replace(/\n/g, ' ')}`);
     });
   };
-  bloco('DEVOLUÇÕES', s.devolucoes, true);
+  bloco('DEVOLUÇÕES POR DEFEITO', s.devSplit.defeito, true);
+  bloco('DEVOLUÇÕES POR ARREPENDIMENTO', s.devSplit.arrep, true);
+  if (s.devSplit.outro.length) bloco('OUTRAS DEVOLUÇÕES', s.devSplit.outro, true);
   bloco('OCORRÊNCIAS', s.ocorrencias, false);
 
   if (mes) {
@@ -893,7 +953,10 @@ function relBuildText(d) {
     L.push(`• Vendas Shopee: ${v(mes.shopee)}`);
     L.push(`• Vendas produtos caros: ${v(mes.outras)}`);
     L.push(`• Total de vendas: ${v(base)}`);
-    L.push(`• Devoluções: ${v(mes.devol)}${p(mes.devol)}`);
+    L.push(`• Devoluções por defeito: ${v(mes.devDef)}${p(mes.devDef)}`);
+    L.push(`• Devoluções por arrependimento: ${v(mes.devArr)}${p(mes.devArr)}`);
+    if (mes.devOutro) L.push(`• Outras devoluções: ${v(mes.devOutro)}${p(mes.devOutro)}`);
+    L.push(`• Total de devoluções: ${v(mes.devol)}${p(mes.devol)}`);
     L.push(`• Desistências: ${v(mes.desist)}${p(mes.desist)}`);
     L.push(`• Ocorrências: ${v(mes.ocorr)}${p(mes.ocorr)}`);
     L.push(`• Adicionados ao estoque: ${v(mes.adic)}`);
@@ -1018,3 +1081,29 @@ function relCopyImage() {
     relToast('Imagem copiada! Cole (Ctrl+V) no WhatsApp ou no e-mail.');
   });
 }
+
+// ── aviso de versão nova ─────────────────────────────────────────────────────
+// O GitHub Pages deixa o navegador guardar a página por alguns minutos. Aqui
+// conferimos se o index.html publicado aponta para uma versão mais nova deste
+// arquivo e, se sim, mostramos um aviso para recarregar.
+const REL_VERSION = '20261109b';
+async function relCheckVersion() {
+  try {
+    const r = await fetch('index.html?check=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const m = (await r.text()).match(/relatorio\.js\?v=([\w-]+)/);
+    if (!m || m[1] === REL_VERSION || document.getElementById('relUpdateBar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'relUpdateBar';
+    bar.className = 'rel-update-bar';
+    bar.innerHTML = '<span>✨ Saiu uma versão nova do painel.</span><button type="button">Atualizar agora</button>';
+    bar.querySelector('button').addEventListener('click', () => {
+      location.href = location.pathname + '?v=' + m[1] + location.hash;
+    });
+    document.body.appendChild(bar);
+  } catch (e) { /* sem internet: ignora */ }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(relCheckVersion, 3000);
+  setInterval(relCheckVersion, 10 * 60 * 1000);
+});
