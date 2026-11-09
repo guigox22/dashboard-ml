@@ -87,13 +87,14 @@ function relSplitDev(lista) {
 function relWeekKey(ini, fim) { return 'relW:' + ini + '_' + fim; }
 function relItemKey(o) { return 'relI:' + (o.venda || o.os || o.produto) + '|' + relISO(o.data) + '|' + (o.tipo || ''); }
 
-// Segunda a sexta da semana de `ref` (deslocada `offsetWeeks` semanas).
+// Sábado a sexta da semana de `ref` (deslocada `offsetWeeks` semanas).
 function relWeekRange(ref, offsetWeeks) {
   const d = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
-  const dow = d.getDay(); // 0 dom … 6 sáb
-  const toMonday = dow === 0 ? -6 : 1 - dow;
-  const ini = new Date(d); ini.setDate(d.getDate() + toMonday + 7 * offsetWeeks);
-  const fim = new Date(ini); fim.setDate(ini.getDate() + 4);
+  // Semana do relatório: sábado a sexta (assim as vendas do fim de semana
+  // entram no relatório da sexta seguinte e nenhum dia fica de fora).
+  const desdeSabado = (d.getDay() + 1) % 7; // sáb 0, dom 1, seg 2 … sex 6
+  const ini = new Date(d); ini.setDate(d.getDate() - desdeSabado + 7 * offsetWeeks);
+  const fim = new Date(ini); fim.setDate(ini.getDate() + 6);
   return { ini, fim };
 }
 
@@ -118,8 +119,9 @@ function relLoadMonth(ano, mesIdx, force) {
         const mi = REL_MES_ABBR[m[2]];
         if (mi !== mesIdx) return;
         const qtd = parseInt(r[5], 10);
+        const hm = relHoraMin(r[0]);
         rows.push({
-          date: new Date(ano, mi, +m[1]),
+          date: new Date(ano, mi, +m[1], hm.h, hm.m),
           venda,
           produto: (r[2] || '').trim(),
           valor: parseNum(r[3]),
@@ -136,6 +138,22 @@ function relLoadMonth(ano, mesIdx, force) {
   relMonthCache[key] = p;
   return p;
 }
+
+// "7 nov 11:37 hs" → { h: 11, m: 37 } (sem hora → 00:00)
+function relHoraMin(txt) {
+  const m = String(txt || '').match(/(\d{1,2}):(\d{2})/);
+  return m ? { h: +m[1], m: +m[2] } : { h: 0, m: 0 };
+}
+
+// Horário de corte da sexta: vendas de sexta DEPOIS desse horário não entram no
+// relatório daquela sexta (já foi enviado) e passam para o da semana seguinte.
+const REL_CORTE_PADRAO = '17:00';
+function relGetCorte() {
+  let v = '';
+  try { v = localStorage.getItem('relCorte') || ''; } catch (e) {}
+  return /^\d{1,2}:\d{2}$/.test(v) ? v : REL_CORTE_PADRAO;
+}
+function relCorteHM() { const [h, m] = relGetCorte().split(':').map(Number); return { h, m }; }
 
 // ── vendas: aba "Produtos caros" ─────────────────────────────────────────────
 // Coluna A = dia que o aparelho saiu ("6 nov 09:01 hs"), sem ano. O ano é
@@ -155,7 +173,8 @@ function relLoadCaros(force) {
         const m = (r[0] || '').trim().toLowerCase().match(/^(\d{1,2})\s+([a-zç]{3})/);
         if (!m || REL_MES_ABBR[m[2]] == null) return;
         const qtd = parseInt(r[5], 10);
-        rows.push({ dia: +m[1], mesIdx: REL_MES_ABBR[m[2]], venda, qtd: isNaN(qtd) || qtd <= 0 ? 1 : qtd });
+        const hm = relHoraMin(r[0]);
+        rows.push({ dia: +m[1], mesIdx: REL_MES_ABBR[m[2]], h: hm.h, m: hm.m, venda, qtd: isNaN(qtd) || qtd <= 0 ? 1 : qtd });
       });
       // A aba não existe → o Google devolve a 1ª aba; confere o cabeçalho
       const ok = rows.length > 0 && /VENDA/i.test(text.slice(0, 400));
@@ -169,7 +188,7 @@ function relLoadCaros(force) {
 function relCarosDate(row, ref) {
   let best = null;
   [-1, 0, 1].forEach(dy => {
-    const d = new Date(ref.getFullYear() + dy, row.mesIdx, row.dia);
+    const d = new Date(ref.getFullYear() + dy, row.mesIdx, row.dia, row.h || 0, row.m || 0);
     if (!best || Math.abs(d - ref) < Math.abs(best - ref)) best = d;
   });
   return best;
@@ -325,6 +344,15 @@ function relBindEvents() {
     relRenderPreview();
   });
 
+  const corteEl = document.getElementById('relCorte');
+  if (corteEl) {
+    corteEl.value = relGetCorte();
+    corteEl.addEventListener('change', () => {
+      if (!/^\d{1,2}:\d{2}$/.test(corteEl.value)) return;
+      try { localStorage.setItem('relCorte', corteEl.value); } catch (e) {}
+      relRecompute();
+    });
+  }
   document.getElementById('relCopiarHtml').addEventListener('click', relCopyHtml);
   document.getElementById('relCopiarTexto').addEventListener('click', relCopyText);
   document.getElementById('relBaixarImg').addEventListener('click', relDownloadImage);
@@ -338,7 +366,14 @@ function relGetRange() {
   let ini = relFromISO(iniISO), fim = relFromISO(fimISO);
   if (fim < ini) [ini, fim] = [fim, ini];
   const fimEnd = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate(), 23, 59, 59, 999);
-  return { ini, fim, fimEnd, iniISO: relISO(ini), fimISO: relISO(fim) };
+  // Janela das VENDAS: se termina numa sexta, vai até o horário de corte; se
+  // começa num sábado, inclui a sexta anterior depois do corte.
+  const c = relCorteHM();
+  const fimSexta = fim.getDay() === 5;
+  const iniSabado = ini.getDay() === 6;
+  const vendasFim = fimSexta ? new Date(fim.getFullYear(), fim.getMonth(), fim.getDate(), c.h, c.m, 0, 0) : fimEnd;
+  const vendasIni = iniSabado ? new Date(ini.getFullYear(), ini.getMonth(), ini.getDate() - 1, c.h, c.m, 0, 1) : ini;
+  return { ini, fim, fimEnd, vendasIni, vendasFim, iniSabado, fimSexta, corte: relGetCorte(), iniISO: relISO(ini), fimISO: relISO(fim) };
 }
 
 // Quando muda o período: recarrega os campos salvos, decide o mês do resumo
@@ -405,8 +440,9 @@ function relLoadMonthFields() {
 function relSumWeeks(mk, field) {
   let total = 0, semanas = 0;
   relStoreKeys('relW:').forEach(k => {
-    const ini = k.slice(5, 15);
-    if (ini.slice(0, 7) !== mk) return;
+    // A semana conta para o mês em que ela termina (a sexta-feira)
+    const fim = k.slice(16, 26);
+    if (fim.slice(0, 7) !== mk) return;
     const v = relNumOrNull(relStoreGet(k)[field]);
     if (v != null) { total += v; semanas++; }
   });
@@ -434,7 +470,7 @@ async function relRecompute() {
   relRenderStatus('Lendo a planilha…', 'loading');
 
   // Vendas da semana (pode cruzar dois meses)
-  const meses = relMonthsBetween(r.ini, r.fim);
+  const meses = relMonthsBetween(r.vendasIni, r.fim);
   const mk = document.getElementById('relMes').value;
   const [ano, mm] = mk.split('-').map(Number);
   const [resSemana, resMes, resCaros] = await Promise.all([
@@ -445,12 +481,13 @@ async function relRecompute() {
   if (token !== relToken) return;
 
   const okSemana = resSemana.every(x => x.ok);
-  const rowsSemana = resSemana.flatMap(x => x.rows).filter(v => v.date >= r.ini && v.date <= r.fimEnd);
+  const naJanela = v => v.date >= r.vendasIni && v.date <= r.vendasFim;
+  const rowsSemana = resSemana.flatMap(x => x.rows).filter(naJanela);
   const vendasSemana = rowsSemana.reduce((a, v) => a + v.qtd, 0);
 
   // Produtos caros: na semana e no mês do resumo
   const carosSemanaRows = resCaros.rows.map(v => Object.assign({}, v, { date: relCarosDate(v, r.fim) }))
-    .filter(v => v.date >= r.ini && v.date <= r.fimEnd);
+    .filter(naJanela);
   const refMes = new Date(ano, mm - 1, 15);
   relState.carosOk = resCaros.ok;
   relState.carosSemana = resCaros.ok ? carosSemanaRows.reduce((a, v) => a + v.qtd, 0) : null;
@@ -460,6 +497,10 @@ async function relRecompute() {
 
   const todasSemana = rowsSemana.concat(carosSemanaRows);
   const dias = [];
+  if (r.iniSabado) {
+    const sexAnt = new Date(r.ini); sexAnt.setDate(r.ini.getDate() - 1);
+    dias.push({ date: sexAnt, noite: true, qtd: todasSemana.filter(v => v.date < r.ini).reduce((a, v) => a + v.qtd, 0) });
+  }
   for (let d = new Date(r.ini); d <= r.fim; d.setDate(d.getDate() + 1)) {
     const iso = relISO(d);
     dias.push({ date: new Date(d), qtd: todasSemana.filter(v => relISO(v.date) === iso).reduce((a, v) => a + v.qtd, 0) });
@@ -676,8 +717,9 @@ function relDayChart(dias) {
       <div style="height:${h}px;background:${d.qtd ? REL_C.greenBar : REL_C.line};border-radius:4px 4px 0 0;font-size:0;line-height:0">&nbsp;</div>
     </td>`;
   }).join('');
-  const labels = dias.map(d => `<td align="center" style="padding:5px 2px 0;font-size:10.5px;color:${REL_C.soft};border-top:1px solid ${REL_C.line}"><b style="color:${REL_C.muted}">${REL_DIAS[d.date.getDay()]}</b><br>${relDM(d.date)}</td>`).join('');
-  return `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;table-layout:fixed"><tr>${cols}</tr><tr>${labels}</tr></table>`;
+  const labels = dias.map(d => `<td align="center" style="padding:5px 2px 0;font-size:10.5px;color:${REL_C.soft};border-top:1px solid ${REL_C.line}"><b style="color:${REL_C.muted}">${REL_DIAS[d.date.getDay()]}${d.noite ? '*' : ''}</b><br>${relDM(d.date)}</td>`).join('');
+  const nota = dias.some(d => d.noite) ? `<div style="font-size:10px;color:${REL_C.soft};margin-top:6px">* sexta anterior, depois das ${relEsc(relGetCorte())}</div>` : '';
+  return `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;table-layout:fixed"><tr>${cols}</tr><tr>${labels}</tr></table>${nota}`;
 }
 
 // Barras horizontais: [{label, qtd, color}]
@@ -781,7 +823,7 @@ function relBuildEmailHtml(d) {
         <td>
           <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#e9fff7;font-weight:bold">Grupo PLL · Relatório semanal${mes ? ' + resumo do mês' : ''}</div>
           <div style="font-size:26px;font-weight:bold;color:#ffffff;margin-top:5px">${periodo}</div>
-          <div style="font-size:13px;color:#e9fff7;margin-top:3px">Vendas, devoluções e ocorrências da semana</div>
+          <div style="font-size:13px;color:#e9fff7;margin-top:3px">${r.iniSabado ? `Vendas de sexta ${relDM(new Date(r.vendasIni))} (depois das ${relEsc(r.corte)}) até ${r.fimSexta ? `sexta ${relDM(r.fim)} (${relEsc(r.corte)})` : relDM(r.fim)}` : 'Vendas, devoluções e ocorrências da semana'}</div>
         </td>
         <td align="right" valign="middle" width="120">
           <div style="display:inline-block;background:rgba(255,255,255,.18);border-radius:12px;padding:10px 14px;text-align:center">
@@ -909,6 +951,7 @@ function relBuildText(d) {
   const L = [];
   L.push('Olá pessoal, boa tarde. Tudo bem?');
   L.push(`Segue relatório semanal (${relDM(r.ini)} a ${relDMY(r.fim)})`);
+  if (r.iniSabado) L.push(`(vendas de sexta ${relDM(new Date(r.vendasIni))} depois das ${r.corte} até ${r.fimSexta ? `sexta ${relDM(r.fim)} às ${r.corte}` : relDM(r.fim)})`);
   if (s.obs) { L.push(''); L.push(s.obs); }
   L.push('');
   L.push(`• Vendas Mercado Livre: ${v(s.vendasML)} (total 2 contas)`);
@@ -1086,7 +1129,7 @@ function relCopyImage() {
 // O GitHub Pages deixa o navegador guardar a página por alguns minutos. Aqui
 // conferimos se o index.html publicado aponta para uma versão mais nova deste
 // arquivo e, se sim, mostramos um aviso para recarregar.
-const REL_VERSION = '20261109b';
+const REL_VERSION = '20261109d';
 async function relCheckVersion() {
   try {
     const r = await fetch('index.html?check=' + Date.now(), { cache: 'no-store' });

@@ -1069,3 +1069,6 @@ tr:hover td { background: var(--teal-light); }
 
 .rel-update-bar { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 9999; display: flex; align-items: center; gap: 12px; background: #1a2332; color: #fff; font-size: 13px; font-weight: 600; padding: 10px 12px 10px 16px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.25); max-width: calc(100vw - 32px); }
 .rel-update-bar button { font: inherit; font-size: 12.5px; border: 0; border-radius: 8px; padding: 7px 12px; background: var(--grad); color: #fff; cursor: pointer; white-space: nowrap; }
+
+.rel-corte { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted2); margin-left: 6px; }
+.rel-corte input { font: inherit; font-size: 12.5px; color: var(--text); background: var(--bg2); border: 1px solid var(--border2); border-radius: 8px; padding: 5px 8px; }
