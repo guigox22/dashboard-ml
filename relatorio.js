@@ -84,6 +84,35 @@ function relSplitDev(lista) {
   return out;
 }
 
+const REL_DEV_STATUS = {
+  pendente: 'Aguardando chegar',
+  reembolsado: 'NF de devolução emitida',
+  outro: 'Em andamento',
+};
+
+function relDevStatus(o) {
+  const partes = stripAccents(o.resolucao || '').toUpperCase().split('|').reverse();
+  const tipo = stripAccents(o.tipo || '').toUpperCase();
+  const reembolso = /\bDEVOLUCAO\s+COM\s+REEMBOLSO\b/;
+  const solicitacao = /\bSOLICITACAO\s+DE\s+DEVOLUCAO\b/;
+  for (const texto of [...partes, tipo]) {
+    if (/\bCANCELAD[AO]S?\b/.test(texto)) return 'outro';
+    if (reembolso.test(texto)) return 'reembolsado';
+    if (solicitacao.test(texto)) return 'pendente';
+  }
+  return 'outro';
+}
+
+function relIsDevolucao(o) {
+  return o.categoria === 'Devolução' || relDevStatus(o) !== 'outro';
+}
+
+function relDevStatusCounts(lista) {
+  const counts = { pendente: 0, reembolsado: 0, outro: 0 };
+  lista.forEach(o => counts[relDevStatus(o)]++);
+  return counts;
+}
+
 function relWeekKey(ini, fim) { return 'relW:' + ini + '_' + fim; }
 function relItemKey(o) { return 'relI:' + (o.venda || o.os || o.produto) + '|' + relISO(o.data) + '|' + (o.tipo || ''); }
 
@@ -457,8 +486,8 @@ async function relRecompute() {
   const lista = (typeof ocorrencias !== 'undefined' ? ocorrencias : [])
     .filter(o => o.data >= r.ini && o.data <= r.fimEnd)
     .sort((a, b) => a.data - b.data);
-  const devolucoes = lista.filter(o => o.categoria === 'Devolução');
-  const ocorrList  = lista.filter(o => o.categoria !== 'Devolução');
+  const devolucoes = lista.filter(relIsDevolucao);
+  const ocorrList  = lista.filter(o => !relIsDevolucao(o));
 
   if (!relDataLoaded && typeof ocorrencias !== 'undefined' && ocorrencias.length) { relDataLoaded = true; relLastSync = new Date(); }
   // Planilha ainda não chegou: tenta de novo em instantes (sem depender do app.js avisar)
@@ -527,13 +556,13 @@ function relMonthAuto() {
   const mk = document.getElementById('relMes').value;
   const [ano, mm] = mk.split('-').map(Number);
   const doMes = (typeof ocorrencias !== 'undefined' ? ocorrencias : []).filter(o => o.ano === ano && o.mesIdx === mm - 1);
-  const devMes = doMes.filter(o => o.categoria === 'Devolução');
+  const devMes = doMes.filter(relIsDevolucao);
   return {
     mk, ano, mesIdx: mm - 1,
     vendasML: relState && relState.mesVendas != null ? relState.mesVendas : null,
     shopee: relSumWeeks(mk, 'shopee'),
     caros: relState && relState.mesCaros != null ? relState.mesCaros : null,
-    devol: devMes.length,
+    devStatus: relDevStatusCounts(devMes),
     devDef: devMes.filter(o => relDevMotivo(o) === 'defeito').length,
     devArr: devMes.filter(o => relDevMotivo(o) === 'arrep').length,
     devOutro: devMes.filter(o => relDevMotivo(o) === 'outro').length,
@@ -598,6 +627,7 @@ function relCollect() {
     ocorrencias: relState.ocorrList.filter(itemFilter),
   };
   semana.devolTotal = relState.devolucoes.length;
+  semana.devStatus = relDevStatusCounts(relState.devolucoes);
   semana.devSplit = relSplitDev(semana.devolucoes);
   semana.devSplitTotal = relSplitDev(relState.devolucoes);
   semana.ocorrTotal = relState.ocorrList.length;
@@ -615,6 +645,7 @@ function relCollect() {
       devDef: pick(m.devDef, a.devDef),
       devArr: pick(m.devArr, a.devArr),
       devOutro: a.devOutro,
+      devStatus: a.devStatus,
       desist: pick(m.desist, a.desist.semanas ? a.desist.total : null),
       ocorr: pick(m.ocorr, a.ocorr),
       adic: pick(m.adic, a.adic.semanas ? a.adic.total : null),
@@ -638,7 +669,7 @@ function relRenderItems() {
   el.innerHTML = all.map(o => {
     const key = relItemKey(o);
     const s = relStoreGet(key);
-    const isDev = o.categoria === 'Devolução';
+    const isDev = relIsDevolucao(o);
     return `
       <div class="rel-item ${s.excluir ? 'rel-item-off' : ''}" data-rel-item="${relEsc(key)}">
         <label class="rel-item-head">
@@ -678,9 +709,9 @@ function relBadge(txt, fg, bg) {
 }
 
 function relStatusBadge(o) {
-  const st = statusResolucao(o);
-  if (st.key === 'reembolsado') return relBadge('✓ Reembolsado', REL_C.green, REL_C.okBg);
-  if (st.key === 'pendente') return relBadge('⏳ Aguardando chegar', REL_C.amber, REL_C.amberBg);
+  const status = relDevStatus(o);
+  if (status === 'reembolsado') return relBadge('✓ ' + REL_DEV_STATUS.reembolsado, REL_C.green, REL_C.okBg);
+  if (status === 'pendente') return relBadge('⏳ ' + REL_DEV_STATUS.pendente, REL_C.amber, REL_C.amberBg);
   return relBadge('Em andamento', REL_C.muted, REL_C.bg);
 }
 
@@ -726,7 +757,7 @@ function relDayChart(dias) {
 function relHBars(items, total) {
   if (!items.length) return `<div style="font-size:12px;color:${REL_C.soft}">Nada nesta semana.</div>`;
   return `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">${items.map(it => {
-    const w = total ? Math.max(4, Math.round(it.qtd / total * 100)) : 0;
+    const w = total ? (it.qtd ? Math.max(4, Math.round(it.qtd / total * 100)) : 0) : 0;
     return `<tr>
       <td style="font-size:12px;color:${REL_C.text};padding:4px 8px 4px 0;white-space:nowrap" width="1%">${relEsc(it.label)}</td>
       <td style="padding:4px 0">
@@ -739,11 +770,12 @@ function relHBars(items, total) {
   }).join('')}</table>`;
 }
 
-function relAgrupar(lista, fnLabel, cores) {
-  const map = new Map();
-  lista.forEach(o => { const k = fnLabel(o); map.set(k, (map.get(k) || 0) + 1); });
-  const palette = cores || ['#ef4444', '#f59e0b', '#8b5cf6', '#3b82f6', '#14b8a6', '#64748b'];
-  return [...map.entries()].sort((a, b) => b[1] - a[1]).map(([label, qtd], i) => ({ label, qtd, color: palette[i % palette.length] }));
+function relStatusBars(counts) {
+  const colors = { pendente: REL_C.amberBar, reembolsado: REL_C.greenBar, outro: '#94a3b8' };
+  const items = Object.entries(REL_DEV_STATUS)
+    .filter(([key]) => key !== 'outro' || counts.outro > 0)
+    .map(([key, label]) => ({ label, qtd: counts[key], color: colors[key] }));
+  return relHBars(items, counts.pendente + counts.reembolsado + counts.outro);
 }
 
 function relItemCard(o, isDev, n) {
@@ -811,10 +843,7 @@ function relBuildEmailHtml(d) {
   const motivos = ['defeito', 'arrep', 'outro']
     .map(k => ({ label: REL_MOTIVOS[k].curto, qtd: s.devSplit[k].length, color: REL_MOTIVOS[k].cor }))
     .filter(it => it.qtd > 0);
-  const situacao = relAgrupar(s.devolucoes, o => {
-    const k = statusResolucao(o).key;
-    return k === 'reembolsado' ? 'Reembolsado' : k === 'pendente' ? 'Aguardando chegar' : 'Em andamento';
-  }).map(it => Object.assign(it, { color: it.label === 'Reembolsado' ? REL_C.greenBar : it.label === 'Aguardando chegar' ? REL_C.amberBar : '#94a3b8' }));
+  const situacao = relStatusBars(s.devStatus);
 
   let html = `<div style="background:${REL_C.bg};padding:16px 0;font-family:Arial,Helvetica,sans-serif">
   <table align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:720px;border-collapse:separate;background:#ffffff;border:1px solid ${REL_C.line};border-radius:14px;font-family:Arial,Helvetica,sans-serif;color:${REL_C.text}">
@@ -862,7 +891,7 @@ function relBuildEmailHtml(d) {
         <td width="50%" valign="top" style="padding:5px">${relPanel('Vendas por dia', relDayChart(s.vendasPorDia))}</td>
         <td width="50%" valign="top" style="padding:5px">${relPanel('Devoluções · motivo', relHBars(motivos, s.devolucoes.length))}
           <div style="height:10px;font-size:0;line-height:0">&nbsp;</div>
-          ${relPanel('Devoluções · situação', relHBars(situacao, s.devolucoes.length))}</td>
+          ${relPanel('Devoluções · situação', situacao)}</td>
       </tr></table>
     </td></tr>`;
 
@@ -907,6 +936,9 @@ function relBuildEmailHtml(d) {
             ${relRateTile('Desistências', mes.desist, base, REL_C.amber, REL_C.amberBg, '25%')}
             ${relRateTile('Ocorrências', mes.ocorr, base, REL_C.blue, REL_C.blueBg, '25%')}
           </tr></table>
+        </td></tr>
+        <tr><td style="padding:6px 18px">
+          ${relPanel('Devoluções · situação', relStatusBars(mes.devStatus))}
         </td></tr>
         <tr><td style="padding:8px 18px 14px">
           <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
@@ -961,6 +993,9 @@ function relBuildText(d) {
   L.push(`• Devoluções por defeito: ${v(s.devSplitTotal.defeito.length)}`);
   L.push(`• Devoluções por arrependimento: ${v(s.devSplitTotal.arrep.length)}`);
   if (s.devSplitTotal.outro.length) L.push(`• Outras devoluções: ${v(s.devSplitTotal.outro.length)}`);
+  L.push(`• ${REL_DEV_STATUS.pendente}: ${v(s.devStatus.pendente)}`);
+  L.push(`• ${REL_DEV_STATUS.reembolsado}: ${v(s.devStatus.reembolsado)}`);
+  if (s.devStatus.outro) L.push(`• ${REL_DEV_STATUS.outro}: ${v(s.devStatus.outro)}`);
   L.push(`• Desistências: ${v(s.desist)}`);
   L.push(`• Adicionados ao estoque: ${v(s.adic)}`);
   L.push(`• Total estoque: ${v(s.estoque)}`);
@@ -970,7 +1005,7 @@ function relBuildText(d) {
     L.push(''); L.push(`${titulo} (${itens.length})`);
     if (!itens.length) { L.push('Nenhuma nesta semana.'); return; }
     itens.forEach(o => {
-      const st = statusResolucao(o);
+      const status = relDevStatus(o);
       const obs = relStoreGet(relItemKey(o)).obs;
       L.push('');
       L.push(`• OS ${o.os || '—'} — ${o.produto || 'Produto não informado'} (${relSubtipo(o.tipo)}) — ${relDMY(o.data)}`);
@@ -979,7 +1014,7 @@ function relBuildText(d) {
         if (o.ocorrencia1) L.push(`  Troca: ${o.ocorrencia1}${o.custo1 != null ? ' — ' + relMoney(o.custo1) : ''}`);
         if (o.ocorrencia2) L.push(`  Troca 2: ${o.ocorrencia2}${o.custo2 != null ? ' — ' + relMoney(o.custo2) : ''}`);
       }
-      L.push(`  Resolução: ${o.resolucao || '—'}${['pendente', 'reembolsado'].includes(st.key) ? ' [' + st.label + ']' : ''}`);
+      L.push(`  Resolução: ${o.resolucao || '—'}${status !== 'outro' ? ' [' + REL_DEV_STATUS[status] + ']' : ''}`);
       if (obs) L.push(`  Obs: ${obs.replace(/\n/g, ' ')}`);
     });
   };
@@ -999,6 +1034,9 @@ function relBuildText(d) {
     L.push(`• Devoluções por defeito: ${v(mes.devDef)}${p(mes.devDef)}`);
     L.push(`• Devoluções por arrependimento: ${v(mes.devArr)}${p(mes.devArr)}`);
     if (mes.devOutro) L.push(`• Outras devoluções: ${v(mes.devOutro)}${p(mes.devOutro)}`);
+    L.push(`• ${REL_DEV_STATUS.pendente}: ${v(mes.devStatus.pendente)}`);
+    L.push(`• ${REL_DEV_STATUS.reembolsado}: ${v(mes.devStatus.reembolsado)}`);
+    if (mes.devStatus.outro) L.push(`• ${REL_DEV_STATUS.outro}: ${v(mes.devStatus.outro)}`);
     L.push(`• Total de devoluções: ${v(mes.devol)}${p(mes.devol)}`);
     L.push(`• Desistências: ${v(mes.desist)}${p(mes.desist)}`);
     L.push(`• Ocorrências: ${v(mes.ocorr)}${p(mes.ocorr)}`);
@@ -1129,7 +1167,7 @@ function relCopyImage() {
 // O GitHub Pages deixa o navegador guardar a página por alguns minutos. Aqui
 // conferimos se o index.html publicado aponta para uma versão mais nova deste
 // arquivo e, se sim, mostramos um aviso para recarregar.
-const REL_VERSION = '20261109d';
+const REL_VERSION = '20261124a';
 async function relCheckVersion() {
   try {
     const r = await fetch('index.html?check=' + Date.now(), { cache: 'no-store' });
