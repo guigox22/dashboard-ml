@@ -762,7 +762,8 @@ function relHBars(items, total) {
       <td style="font-size:12px;color:${REL_C.text};padding:4px 8px 4px 0;white-space:nowrap" width="1%">${relEsc(it.label)}</td>
       <td style="padding:4px 0">
         <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:${REL_C.bg};border-radius:5px"><tr>
-          <td width="${w}%" style="background:${it.color};height:14px;border-radius:5px;font-size:0;line-height:0">&nbsp;</td>${w < 100 ? '<td style="font-size:0;line-height:0">&nbsp;</td>' : ''}
+          ${w > 0 ? `<td width="${w}%" style="background:${it.color};height:14px;border-radius:5px;font-size:0;line-height:0">&nbsp;</td>` : ''}
+          ${w < 100 ? '<td style="height:14px;font-size:0;line-height:0">&nbsp;</td>' : ''}
         </tr></table>
       </td>
       <td align="right" width="1%" style="font-size:12.5px;font-weight:bold;color:${REL_C.text};padding:4px 0 4px 8px;white-space:nowrap">${it.qtd}</td>
@@ -1167,7 +1168,7 @@ function relCopyImage() {
 // O GitHub Pages deixa o navegador guardar a página por alguns minutos. Aqui
 // conferimos se o index.html publicado aponta para uma versão mais nova deste
 // arquivo e, se sim, mostramos um aviso para recarregar.
-const REL_VERSION = '20261124a';
+const REL_VERSION = '20261124b';
 async function relCheckVersion() {
   try {
     const r = await fetch('index.html?check=' + Date.now(), { cache: 'no-store' });
