@@ -6,7 +6,7 @@
        pelo app.js na variável global `ocorrencias`).
      • Aba do mês (ex: "NOVEMBRO 2026", mesmo oculta) → quantidade de vendas.
    Campos manuais (desistências, adicionados ao estoque, total em estoque,
-   Shopee, observações) ficam salvos neste navegador (localStorage).
+   observações) ficam salvos neste navegador (localStorage).
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const REL_MES_ABBR = { jan: 0, fev: 1, mar: 2, abr: 3, mai: 4, jun: 5, jul: 6, ago: 7, set: 8, out: 9, nov: 10, dez: 11 };
@@ -540,7 +540,6 @@ function relMonthAuto() {
   return {
     mk, ano, mesIdx: mm - 1,
     vendasML: relState && relState.mesVendas != null ? relState.mesVendas : null,
-    shopee: relSumWeeks(mk, 'shopee'),
     caros: relState && relState.mesCaros != null ? relState.mesCaros : null,
     devStatus: relDevStatusCounts(devMes),
     devDef: devMes.filter(o => relDevMotivo(o) === 'defeito').length,
@@ -563,7 +562,6 @@ function relUpdateMonthAutos() {
   };
   setAuto('relM_vendasML', a.vendasML,
     relState && relState.mesAbaOk === false ? `aba “${relState.mesAbaNome}” indisponível` : `aba ${relState ? relState.mesAbaNome || '' : ''}`);
-  setAuto('relM_shopee', a.shopee.total, `soma de ${a.shopee.semanas} semana(s)`);
   setAuto('relM_caros', a.caros, relState && relState.carosOk === false ? 'aba “Produtos caros” indisponível' : 'aba Produtos caros');
   const wc = document.getElementById('relW_caros');
   if (wc) wc.placeholder = relState && relState.carosSemana != null ? String(relState.carosSemana) : '…';
@@ -596,7 +594,6 @@ function relCollect() {
   const itemFilter = o => !relStoreGet(relItemKey(o)).excluir;
   const semana = {
     vendasML: pick(w.vendasML, relState.vendasSemana),
-    shopee: pick(w.shopee, 0),
     outras: pick(w.caros, relState.carosSemana),
     vendasPorDia: relState.vendasPorDia,
     desist: relNumOrNull(w.desist),
@@ -611,7 +608,7 @@ function relCollect() {
   semana.devSplit = relSplitDev(semana.devolucoes);
   semana.devSplitTotal = relSplitDev(relState.devolucoes);
   semana.ocorrTotal = relState.ocorrList.length;
-  semana.vendasTotal = semana.vendasML == null ? null : semana.vendasML + (semana.shopee || 0) + (semana.outras || 0);
+  semana.vendasTotal = semana.vendasML == null ? null : semana.vendasML + (semana.outras || 0);
 
   let mes = null;
   if (document.getElementById('relIncluirMes').checked) {
@@ -620,7 +617,6 @@ function relCollect() {
     mes = {
       nome: MESES_PT[a.mesIdx], ano: a.ano,
       vendasML: pick(m.vendasML, a.vendasML),
-      shopee: pick(m.shopee, a.shopee.total),
       outras: pick(m.caros, a.caros),
       devDef: pick(m.devDef, a.devDef),
       devArr: pick(m.devArr, a.devArr),
@@ -631,7 +627,7 @@ function relCollect() {
       adic: pick(m.adic, a.adic.semanas ? a.adic.total : null),
       valorDevolvido: a.valorDevolvido,
     };
-    mes.vendasTotal = (mes.vendasML || 0) + (mes.shopee || 0) + (mes.outras || 0);
+    mes.vendasTotal = (mes.vendasML || 0) + (mes.outras || 0);
     mes.devol = (mes.devDef || 0) + (mes.devArr || 0) + (mes.devOutro || 0);
   }
   return { r, semana, mes };
@@ -672,8 +668,8 @@ const REL_C = {
 };
 const REL_DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
-function relTile(label, value, sub, color, accent) {
-  return `<td width="25%" valign="top" style="padding:5px">
+function relTile(label, value, sub, color, accent, width = '25%') {
+  return `<td width="${width}" valign="top" style="padding:5px">
     <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border:1px solid ${REL_C.line};border-top:3px solid ${accent || REL_C.line};border-radius:8px;background:#ffffff">
       <tr><td style="padding:11px 12px 10px">
         <div style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:${REL_C.soft};font-weight:bold">${label}</div>
@@ -819,7 +815,7 @@ function relBuildEmailHtml(d) {
   const saud = (() => { const h = new Date().getHours(); return h < 12 ? 'bom dia' : h < 18 ? 'boa tarde' : 'boa noite'; })();
   const nn = v => (v == null ? '<span style="color:#b0bac4">—</span>' : relN(v));
   const valorDev = s.devolucoes.reduce((a, o) => a + (o.precoVenda || 0), 0);
-  const subVendas = [`ML ${relN(s.vendasML)}`, s.shopee ? `Shopee ${relN(s.shopee)}` : '', s.outras ? `Caros ${relN(s.outras)}` : ''].filter(Boolean).join(' · ');
+  const subVendas = [`ML ${relN(s.vendasML)}`, s.outras ? `Caros ${relN(s.outras)}` : ''].filter(Boolean).join(' · ');
 
   const motivos = ['defeito', 'arrep', 'outro']
     .map(k => ({ label: REL_MOTIVOS[k].curto, qtd: s.devSplit[k].length, color: REL_MOTIVOS[k].cor }))
@@ -850,11 +846,11 @@ function relBuildEmailHtml(d) {
 
     <tr><td style="padding:12px 21px 0">
       <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
-        ${relTile('Total de vendas', nn(s.vendasTotal), subVendas, REL_C.green, REL_C.greenBar)}
-        ${relTile('Mercado Livre', nn(s.vendasML), '2 contas', null, REL_C.teal)}
-        ${relTile('Shopee', nn(s.shopee), '&nbsp;', null, '#f97316')}
-        ${relTile('Produtos caros', nn(s.outras), 'aba Produtos caros', null, '#64748b')}
-      </tr><tr>
+        ${relTile('Total de vendas', nn(s.vendasTotal), subVendas, REL_C.green, REL_C.greenBar, '34%')}
+        ${relTile('Mercado Livre', nn(s.vendasML), '2 contas', null, REL_C.teal, '33%')}
+        ${relTile('Produtos caros', nn(s.outras), 'aba Produtos caros', null, '#64748b', '33%')}
+      </tr></table>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
         ${relTile('Dev. por defeito', nn(s.devSplitTotal.defeito.length), 'problema no aparelho', REL_MOTIVOS.defeito.fg, REL_MOTIVOS.defeito.cor)}
         ${relTile('Dev. arrependimento', nn(s.devSplitTotal.arrep.length), 'cliente desistiu', REL_MOTIVOS.arrep.fg, REL_MOTIVOS.arrep.cor)}
         ${relTile('Desistências', nn(s.desist), 'vendas canceladas', REL_C.amber, REL_C.amberBar)}
@@ -926,7 +922,6 @@ function relBuildEmailHtml(d) {
             <td width="48%" valign="top" style="vertical-align:top">
               <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
                 ${linha('Vendas Mercado Livre (2 contas)', mes.vendasML)}
-                ${linha('Vendas Shopee', mes.shopee)}
                 ${linha('Vendas produtos caros', mes.outras)}
                 ${linha('Total de vendas', base, true)}
               </table>
@@ -968,7 +963,6 @@ function relBuildText(d) {
   if (s.obs) { L.push(''); L.push(s.obs); }
   L.push('');
   L.push(`• Vendas Mercado Livre: ${v(s.vendasML)} (total 2 contas)`);
-  L.push(`• Vendas Shopee: ${v(s.shopee)}`);
   L.push(`• Vendas produtos caros: ${v(s.outras)}`);
   L.push(`• Total de vendas: ${v(s.vendasTotal)}`);
   L.push(`• Devoluções por defeito: ${v(s.devSplitTotal.defeito.length)}`);
@@ -1009,7 +1003,6 @@ function relBuildText(d) {
     const p = x => (x != null && base ? ` (${relPct(x, base)} das vendas)` : '');
     L.push(''); L.push(`RESUMO DO MÊS DE ${mes.nome.toUpperCase()} ${mes.ano}`); L.push('');
     L.push(`• Vendas Mercado Livre: ${v(mes.vendasML)} (total 2 contas)`);
-    L.push(`• Vendas Shopee: ${v(mes.shopee)}`);
     L.push(`• Vendas produtos caros: ${v(mes.outras)}`);
     L.push(`• Total de vendas: ${v(base)}`);
     L.push(`• Devoluções por defeito: ${v(mes.devDef)}${p(mes.devDef)}`);
@@ -1148,7 +1141,7 @@ function relCopyImage() {
 // O GitHub Pages deixa o navegador guardar a página por alguns minutos. Aqui
 // conferimos se o index.html publicado aponta para uma versão mais nova deste
 // arquivo e, se sim, mostramos um aviso para recarregar.
-const REL_VERSION = '20261126b';
+const REL_VERSION = '20261126c';
 async function relCheckVersion() {
   try {
     const r = await fetch('index.html?check=' + Date.now(), { cache: 'no-store' });
