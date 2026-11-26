@@ -128,40 +128,41 @@ function relWeekRange(ref, offsetWeeks) {
 }
 
 // ── vendas: aba do mês ───────────────────────────────────────────────────────
-// Busca a aba pelo NOME (funciona mesmo com a aba oculta). Atenção: se a aba
-// não existir, o Google devolve a primeira aba da planilha — por isso só
-// aceitamos linhas cuja data seja do mês esperado.
+// O Google pode devolver a primeira aba quando o nome solicitado não existe.
+async function relLoadSalesSheet(nome) {
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&headers=0&sheet=${encodeURIComponent(nome)}&cachebust=${Date.now()}`;
+  const response = await fetch(url, { cache: 'no-store' });
+  if (!response.ok) throw new Error('HTTP ' + response.status);
+  const tabela = lerTabelaVendas(await response.text());
+  if (!tabela) throw new Error('Cabeçalhos DATA, VENDA e PRODUTO não identificados');
+
+  const rows = [];
+  for (const r of tabela.rows) {
+    const venda = r[tabela.venda] || '';
+    if (!venda.startsWith('#')) continue;
+    const data = r[tabela.data] || '';
+    const m = data.toLowerCase().match(/^(\d{1,2})\s+([a-zç]{3})/);
+    const mesIdx = m ? REL_MES_ABBR[m[2]] : undefined;
+    if (mesIdx == null) throw new Error('Formato de data da venda não reconhecido');
+    const qtd = Number(r[tabela.quantidade]);
+    rows.push({ dia: +m[1], mesIdx, ...relHoraMin(data), venda, qtd: Number.isInteger(qtd) && qtd > 0 ? qtd : 1 });
+  }
+  return rows;
+}
+
 function relLoadMonth(ano, mesIdx, force) {
   const key = relMonthKey(ano, mesIdx);
   if (relMonthCache[key] && !force) return relMonthCache[key];
   const nome = MESES_PT[mesIdx].toUpperCase() + ' ' + ano;
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(nome)}&cachebust=${Date.now()}`;
-  const p = fetch(url, { cache: 'no-store' })
-    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
-    .then(text => {
-      const rows = [];
-      relParseCSV(text).forEach(r => {
-        const venda = (r[1] || '').trim();
-        if (!venda.startsWith('#')) return;
-        const m = (r[0] || '').trim().toLowerCase().match(/^(\d{1,2})\s+([a-zç]{3})/);
-        if (!m) return;
-        const mi = REL_MES_ABBR[m[2]];
-        if (mi !== mesIdx) return;
-        const qtd = parseInt(r[5], 10);
-        const hm = relHoraMin(r[0]);
-        rows.push({
-          date: new Date(ano, mi, +m[1], hm.h, hm.m),
-          venda,
-          produto: (r[2] || '').trim(),
-          valor: parseNum(r[3]),
-          qtd: isNaN(qtd) || qtd <= 0 ? 1 : qtd,
-        });
-      });
-      return { ok: rows.length > 0, rows, nome };
+  const p = relLoadSalesSheet(nome)
+    .then(rows => {
+      const doMes = rows.filter(v => v.mesIdx === mesIdx);
+      if (rows.length && !doMes.length) throw new Error('Nenhuma venda pertence ao mês solicitado');
+      return { ok: true, rows: doMes.map(v => ({ ...v, date: new Date(ano, mesIdx, v.dia, v.h, v.m) })), nome };
     })
     .catch(err => {
       console.warn('Aba de vendas "' + nome + '" não carregada:', err.message);
-      delete relMonthCache[key];
+      if (relMonthCache[key] === p) delete relMonthCache[key];
       return { ok: false, rows: [], nome };
     });
   relMonthCache[key] = p;
@@ -185,32 +186,20 @@ function relGetCorte() {
 function relCorteHM() { const [h, m] = relGetCorte().split(':').map(Number); return { h, m }; }
 
 // ── vendas: aba "Produtos caros" ─────────────────────────────────────────────
-// Coluna A = dia que o aparelho saiu ("6 nov 09:01 hs"), sem ano. O ano é
-// deduzido pela data mais próxima do período consultado.
+// O ano é deduzido pela data mais próxima do período consultado.
 const REL_ABA_CAROS = 'Produtos caros';
 let relCarosCache = null;
 function relLoadCaros(force) {
   if (relCarosCache && !force) return relCarosCache;
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(REL_ABA_CAROS)}&cachebust=${Date.now()}`;
-  relCarosCache = fetch(url, { cache: 'no-store' })
-    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
-    .then(text => {
-      const rows = [];
-      relParseCSV(text).forEach(r => {
-        const venda = (r[1] || '').trim();
-        if (!venda.startsWith('#')) return;
-        const m = (r[0] || '').trim().toLowerCase().match(/^(\d{1,2})\s+([a-zç]{3})/);
-        if (!m || REL_MES_ABBR[m[2]] == null) return;
-        const qtd = parseInt(r[5], 10);
-        const hm = relHoraMin(r[0]);
-        rows.push({ dia: +m[1], mesIdx: REL_MES_ABBR[m[2]], h: hm.h, m: hm.m, venda, qtd: isNaN(qtd) || qtd <= 0 ? 1 : qtd });
-      });
-      // A aba não existe → o Google devolve a 1ª aba; confere o cabeçalho
-      const ok = rows.length > 0 && /VENDA/i.test(text.slice(0, 400));
-      return { ok, rows: ok ? rows : [] };
-    })
-    .catch(err => { console.warn('Aba "Produtos caros" não carregada:', err.message); relCarosCache = null; return { ok: false, rows: [] }; });
-  return relCarosCache;
+  const p = relLoadSalesSheet(REL_ABA_CAROS)
+    .then(rows => ({ ok: true, rows }))
+    .catch(err => {
+      console.warn('Aba "Produtos caros" não carregada:', err.message);
+      if (relCarosCache === p) relCarosCache = null;
+      return { ok: false, rows: [] };
+    });
+  relCarosCache = p;
+  return p;
 }
 
 // Data completa de uma linha, escolhendo o ano mais próximo da referência.
@@ -228,28 +217,6 @@ function relMonthsBetween(ini, fim) {
   const d = new Date(ini.getFullYear(), ini.getMonth(), 1);
   while (d <= fim) { out.push({ ano: d.getFullYear(), mesIdx: d.getMonth() }); d.setMonth(d.getMonth() + 1); }
   return out;
-}
-
-// CSV com suporte a aspas e quebras de linha dentro das células (independente
-// do app.js, para a página funcionar mesmo se o navegador tiver uma versão
-// antiga dele em cache).
-function relParseCSV(text) {
-  const rows = [];
-  let row = [], cell = '', inside = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (inside) {
-      if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else inside = false; }
-      else cell += ch;
-    } else if (ch === '"') inside = true;
-    else if (ch === ',') { row.push(cell.trim()); cell = ''; }
-    else if (ch === '\n' || ch === '\r') {
-      if (ch === '\r' && text[i + 1] === '\n') i++;
-      row.push(cell.trim()); rows.push(row); row = []; cell = '';
-    } else cell += ch;
-  }
-  if (cell !== '' || row.length) { row.push(cell.trim()); rows.push(row); }
-  return rows;
 }
 
 // ── inicialização ───────────────────────────────────────────────────────────
@@ -299,13 +266,13 @@ function relRenderAutoList() {
   if (!el || !relState) return;
   const loading = '<span class="rel-auto-loading">lendo…</span>';
   const ml = relState.vendasSemana != null ? relN(relState.vendasSemana)
-    : (relState.abasFaltando && relState.abasFaltando.length ? '<span class="rel-auto-warn">aba não encontrada</span>' : loading);
+    : (relState.abasFaltando && relState.abasFaltando.length ? '<span class="rel-auto-warn">leitura indisponível</span>' : loading);
   const w = relState.range ? relStoreGet(relWeekKey(relState.range.iniISO, relState.range.fimISO)) : {};
   const mlCorr = relNumOrNull(w.vendasML);
   const linha = (cor, label, val, sub) => `<div class="rel-auto-row"><span class="rel-auto-dot" style="background:${cor}"></span><span class="rel-auto-label">${label}${sub ? `<small>${sub}</small>` : ''}</span><b>${val}</b></div>`;
   el.innerHTML =
     linha('#2ab5b5', 'Vendas Mercado Livre', mlCorr != null ? relN(mlCorr) : ml, mlCorr != null ? 'corrigido por você' : 'aba do mês, 2 contas') +
-    linha('#64748b', 'Vendas produtos caros', relNumOrNull(w.caros) != null ? relN(relNumOrNull(w.caros)) : (relState.carosSemana != null ? relN(relState.carosSemana) : (relState.carosOk === false ? '<span class="rel-auto-warn">aba não encontrada</span>' : loading)), relNumOrNull(w.caros) != null ? 'corrigido por você' : 'aba Produtos caros') +
+    linha('#64748b', 'Vendas produtos caros', relNumOrNull(w.caros) != null ? relN(relNumOrNull(w.caros)) : (relState.carosSemana != null ? relN(relState.carosSemana) : (relState.carosOk === false ? '<span class="rel-auto-warn">leitura indisponível</span>' : loading)), relNumOrNull(w.caros) != null ? 'corrigido por você' : 'aba Produtos caros') +
     (() => {
       const sp = relSplitDev(relState.devolucoes);
       return linha(REL_MOTIVOS.defeito.cor, 'Devoluções por defeito', relDataLoaded ? relN(sp.defeito.length) : loading, 'aba Ocorrências') +
@@ -548,7 +515,7 @@ async function relRecompute() {
   relRenderPreview();
   const hora = (relLastSync || new Date()).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   if (!relDataLoaded) relRenderStatus('Lendo a planilha…', 'loading');
-  else if (relState.abasFaltando.length) relRenderStatus(`Aba “${relState.abasFaltando.join('”, “')}” não encontrada — digite as vendas em “Corrigir vendas”`, 'warn');
+  else if (relState.abasFaltando.length) relRenderStatus(`Aba “${relState.abasFaltando.join('”, “')}” indisponível — digite as vendas em “Corrigir vendas”`, 'warn');
   else relRenderStatus(`Planilha lida às ${hora}`, 'ok');
 }
 
@@ -582,9 +549,9 @@ function relUpdateMonthAutos() {
     if (span) span.textContent = txt || '';
   };
   setAuto('relM_vendasML', a.vendasML,
-    relState && relState.mesAbaOk === false ? `aba “${relState.mesAbaNome}” não encontrada` : `aba ${relState ? relState.mesAbaNome || '' : ''}`);
+    relState && relState.mesAbaOk === false ? `aba “${relState.mesAbaNome}” indisponível` : `aba ${relState ? relState.mesAbaNome || '' : ''}`);
   setAuto('relM_shopee', a.shopee.total, `soma de ${a.shopee.semanas} semana(s)`);
-  setAuto('relM_caros', a.caros, relState && relState.carosOk === false ? 'aba “Produtos caros” não encontrada' : 'aba Produtos caros');
+  setAuto('relM_caros', a.caros, relState && relState.carosOk === false ? 'aba “Produtos caros” indisponível' : 'aba Produtos caros');
   const wc = document.getElementById('relW_caros');
   if (wc) wc.placeholder = relState && relState.carosSemana != null ? String(relState.carosSemana) : '…';
   setAuto('relM_devDef', a.devDef, 'aba Ocorrências');
@@ -600,7 +567,7 @@ function relUpdateMonthAutos() {
     wSpan.textContent = 'automático da planilha';
   } else if (relState && relState.abasFaltando && relState.abasFaltando.length) {
     wIn.placeholder = 'preencher';
-    wSpan.textContent = `aba “${relState.abasFaltando.join('”, “')}” não encontrada`;
+    wSpan.textContent = `aba “${relState.abasFaltando.join('”, “')}” indisponível`;
   } else {
     wIn.placeholder = '…';
     wSpan.textContent = 'carregando…';
@@ -1168,7 +1135,7 @@ function relCopyImage() {
 // O GitHub Pages deixa o navegador guardar a página por alguns minutos. Aqui
 // conferimos se o index.html publicado aponta para uma versão mais nova deste
 // arquivo e, se sim, mostramos um aviso para recarregar.
-const REL_VERSION = '20261124b';
+const REL_VERSION = '20261126a';
 async function relCheckVersion() {
   try {
     const r = await fetch('index.html?check=' + Date.now(), { cache: 'no-store' });
