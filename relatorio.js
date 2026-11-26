@@ -137,17 +137,23 @@ async function relLoadSalesSheet(nome) {
   if (!tabela) throw new Error('Cabeçalhos DATA, VENDA e PRODUTO não identificados');
 
   const rows = [];
+  let semData = 0;
   for (const r of tabela.rows) {
     const venda = r[tabela.venda] || '';
     if (!venda.startsWith('#')) continue;
     const data = r[tabela.data] || '';
     const m = data.toLowerCase().match(/^(\d{1,2})\s+([a-zç]{3})/);
     const mesIdx = m ? REL_MES_ABBR[m[2]] : undefined;
-    if (mesIdx == null) throw new Error('Formato de data da venda não reconhecido');
+    const dia = m ? Number(m[1]) : 0;
+    if (mesIdx == null || dia < 1 || dia > 31) {
+      semData++;
+      continue;
+    }
     const qtd = Number(r[tabela.quantidade]);
-    rows.push({ dia: +m[1], mesIdx, ...relHoraMin(data), venda, qtd: Number.isInteger(qtd) && qtd > 0 ? qtd : 1 });
+    rows.push({ dia, mesIdx, ...relHoraMin(data), venda, qtd: Number.isInteger(qtd) && qtd > 0 ? qtd : 1 });
   }
-  return rows;
+  if (semData && !rows.length) throw new Error('Nenhuma venda com data reconhecida');
+  return { rows, semData };
 }
 
 function relLoadMonth(ano, mesIdx, force) {
@@ -155,10 +161,10 @@ function relLoadMonth(ano, mesIdx, force) {
   if (relMonthCache[key] && !force) return relMonthCache[key];
   const nome = MESES_PT[mesIdx].toUpperCase() + ' ' + ano;
   const p = relLoadSalesSheet(nome)
-    .then(rows => {
+    .then(({ rows, semData }) => {
       const doMes = rows.filter(v => v.mesIdx === mesIdx);
       if (rows.length && !doMes.length) throw new Error('Nenhuma venda pertence ao mês solicitado');
-      return { ok: true, rows: doMes.map(v => ({ ...v, date: new Date(ano, mesIdx, v.dia, v.h, v.m) })), nome };
+      return { ok: true, rows: doMes.map(v => ({ ...v, date: new Date(ano, mesIdx, v.dia, v.h, v.m) })), nome, semData };
     })
     .catch(err => {
       console.warn('Aba de vendas "' + nome + '" não carregada:', err.message);
@@ -192,7 +198,7 @@ let relCarosCache = null;
 function relLoadCaros(force) {
   if (relCarosCache && !force) return relCarosCache;
   const p = relLoadSalesSheet(REL_ABA_CAROS)
-    .then(rows => ({ ok: true, rows }))
+    .then(dados => ({ ok: true, ...dados }))
     .catch(err => {
       console.warn('Aba "Produtos caros" não carregada:', err.message);
       if (relCarosCache === p) relCarosCache = null;
@@ -516,7 +522,14 @@ async function relRecompute() {
   const hora = (relLastSync || new Date()).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   if (!relDataLoaded) relRenderStatus('Lendo a planilha…', 'loading');
   else if (relState.abasFaltando.length) relRenderStatus(`Aba “${relState.abasFaltando.join('”, “')}” indisponível — digite as vendas em “Corrigir vendas”`, 'warn');
-  else relRenderStatus(`Planilha lida às ${hora}`, 'ok');
+  else {
+    // O mesmo mês pode alimentar tanto a semana quanto o resumo mensal.
+    const fontes = new Map(resSemana.concat(resMes).map(aba => [aba.nome, aba]));
+    fontes.set(REL_ABA_CAROS, resCaros);
+    const avisos = [...fontes.entries()].filter(([, aba]) => aba.semData)
+      .map(([nome, aba]) => `${nome}: ${aba.semData} pedido(s) fora da contagem por falta de data válida`);
+    relRenderStatus(avisos.length ? avisos.join(' · ') : `Planilha lida às ${hora}`, avisos.length ? 'warn' : 'ok');
+  }
 }
 
 function relMonthAuto() {
@@ -1135,7 +1148,7 @@ function relCopyImage() {
 // O GitHub Pages deixa o navegador guardar a página por alguns minutos. Aqui
 // conferimos se o index.html publicado aponta para uma versão mais nova deste
 // arquivo e, se sim, mostramos um aviso para recarregar.
-const REL_VERSION = '20261126a';
+const REL_VERSION = '20261126b';
 async function relCheckVersion() {
   try {
     const r = await fetch('index.html?check=' + Date.now(), { cache: 'no-store' });
