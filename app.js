@@ -1025,19 +1025,46 @@ function processCSV(text) {
   if (!dados.length) useFallbackData();
 }
 
+// As abas antigas e novas têm cabeçalhos em posições diferentes.
+function lerTabelaVendas(text) {
+  const rows = parseCSVFull(text);
+  for (const [index, row] of rows.entries()) {
+    const headers = row.map(cell => stripAccents(cell).toUpperCase().trim());
+    const data = headers.indexOf('DATA');
+    const venda = headers.indexOf('VENDA');
+    const produto = headers.indexOf('PRODUTO');
+    if (data < 0 || venda < 0 || produto < 0) continue;
+    const valor = headers.findIndex(cell => /^(VENDIDO|VALOR(?: DE VENDA)?|PRECO DE VENDA)$/.test(cell));
+    const custo = headers.findIndex(cell => /^(CUSTO(?: TOTAL| UNITARIO)?)$/.test(cell));
+    const quantidade = headers.findIndex(cell => /^(QTD\.?|QTDE\.?|QUANTIDADE)$/.test(cell));
+    // Nas abas mensais, estas três colunas costumam vir sem rótulo no CSV.
+    const semRotulos = [1, 2, 3].every(offset => !headers[produto + offset]);
+    return {
+      rows: rows.slice(index + 1),
+      data, venda, produto,
+      valor: valor < 0 && semRotulos ? produto + 1 : valor,
+      custo: custo < 0 && semRotulos ? produto + 2 : custo,
+      quantidade: quantidade < 0 && !headers[produto + 3] && (semRotulos || (valor === produto + 1 && custo === produto + 2))
+        ? produto + 3 : quantidade,
+      mes: headers.indexOf('MES'),
+    };
+  }
+  return null;
+}
+
 function processEstoqueCSV(text) {
   estoqueAntigo = [];
   const mMap = {jan:'Jan',fev:'Fev',mar:'Mar',abr:'Abr',mai:'Mai',jun:'Jun',jul:'Jul',ago:'Ago',set:'Set',out:'Out',nov:'Nov',dez:'Dez'};
-  const lines = text.split('\n').map(parseCSVLine);
+  const tabela = lerTabelaVendas(text);
+  if (!tabela) return;
 
-  for (let i = 0; i < lines.length; i++) {
-    const r    = lines[i];
-    const colA = (r[0] || '').trim();
-    const colC = (r[2] || '').trim();
-    const colD = (r[3] || '').trim();
-    const colE = (r[4] || '').trim();
-    const colF = (r[5] || '').trim();
-    const colG = (r[6] || '').trim();
+  for (const r of tabela.rows) {
+    const colA = r[tabela.data] || '';
+    const colC = r[tabela.produto] || '';
+    const colD = r[tabela.valor] || '';
+    const colE = r[tabela.custo] || '';
+    const colF = r[tabela.quantidade] || '';
+    const colG = r[tabela.mes] || '';
 
     if (!colA || colA.toUpperCase() === 'DATA' || !colA.match(/\d/)) continue;
     if (!colC || colC.toUpperCase() === 'PRODUTO') continue;
